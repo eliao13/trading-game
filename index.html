@@ -1,0 +1,1258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Read raw price action on real 5-minute charts with the ticker hidden.">
+<meta name="theme-color" content="#EFF2F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1217" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Blind Tape">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Blind Tape</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#EFF2F1; --surface:#FFFFFF; --ink:#16202A; --muted:#5A6673; --line:#D6DDE1; --grid:#E7EBEE;
+  --accent:#2F55D4; --accent-ink:#FFFFFF; --up:#0E8A5F; --down:#D0443A; --future:#E6EBEE; --shadow:0 1px 2px rgba(22,32,42,.06),0 8px 24px -12px rgba(22,32,42,.18);
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0D1217; --surface:#151C23; --ink:#E3E8ED; --muted:#8C98A5; --line:#27313B; --grid:#1B232B;
+    --accent:#7F9CFF; --accent-ink:#0D1217; --up:#32C08A; --down:#F2665C; --future:#11181F; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0D1217; --surface:#151C23; --ink:#E3E8ED; --muted:#8C98A5; --line:#27313B; --grid:#1B232B;
+  --accent:#7F9CFF; --accent-ink:#0D1217; --up:#32C08A; --down:#F2665C; --future:#11181F; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 16px;padding-block:20px 40px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.up{color:var(--up)} .down{color:var(--down)}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 32px}
+.brand h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4vw,40px);line-height:1;margin:0;letter-spacing:-.02em}
+.brand p{margin:6px 0 0;color:var(--muted);max-width:52ch;text-wrap:pretty}
+.stats{display:flex;flex-wrap:wrap;gap:10px 28px}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat .v{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:20px;font-weight:600}
+
+/* main grid */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
+
+.chart-card{display:flex;flex-direction:column;min-width:0}
+.chart-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ticker{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.02em}
+.tag{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;background:var(--future);color:var(--muted)}
+.ohlc{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.ohlc b{color:var(--ink);font-weight:500}
+.spacer{flex:1}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+.toggle input{accent-color:var(--accent)}
+.chart-wrap{position:relative;height:clamp(320px,58vh,560px)}
+#chart{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.progress{height:4px;background:var(--future);border-radius:0 0 10px 10px;overflow:hidden}
+.progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:color-mix(in srgb,var(--surface) 55%,transparent);backdrop-filter:blur(2px);padding:16px}
+.overlay .box{background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:22px 24px;max-width:400px;width:100%;max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.overlay .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.setups-sum{display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--line)}
+.setups-sum .label{padding-top:8px}
+.srow{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;align-items:baseline;font-size:13.5px}
+.srow .sub{grid-column:2/-1;font-size:12.5px;color:var(--muted)}
+.code{font:600 10.5px var(--mono);padding:2px 5px;border-radius:3px;background:var(--ink);color:var(--surface);letter-spacing:.02em}
+.how{font-size:12.5px;color:var(--muted)}
+.how summary{cursor:pointer;color:var(--ink);font-weight:500}
+.how ul{margin:6px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.review-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.btn.small{padding:5px 10px;font-size:12.5px}
+.panel-body{display:flex;flex-direction:column;gap:16px}
+.seg.game-seg{grid-template-columns:repeat(2,1fr)}
+.seg.game-seg button{font:600 13.5px var(--sans);padding:9px 0}
+.pos[data-res="hit"]{border-color:color-mix(in srgb,var(--up) 55%,var(--line))}
+.pos[data-res="miss"]{border-color:color-mix(in srgb,var(--down) 55%,var(--line))}
+.btn.call{font-size:16px;padding:16px 12px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 16px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.overlay h2{font-family:var(--display);font-weight:800;font-size:24px;margin:0;line-height:1.1;text-wrap:balance}
+.reveal{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:8px;background:var(--future);border:1px solid var(--line)}
+.reveal-tk{font-family:var(--display);font-weight:800;font-size:30px;line-height:1;color:var(--accent)}
+.reveal-name{font-weight:600}
+.reveal-dates{font-size:12.5px;color:var(--muted)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:14px}
+.overlay dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+.overlay dt{color:var(--muted);font-size:13px}
+.overlay dd{margin:0;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-weight:600}
+
+/* panel */
+.panel{padding:16px;display:flex;flex-direction:column;gap:16px}
+.pos{display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:8px;background:var(--future);border:1px solid var(--line)}
+.pos-side{font-family:var(--display);font-weight:800;font-size:22px;line-height:1.1}
+.pos-sub{font-size:13px;color:var(--muted)}
+.pos-pnl{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:26px;font-weight:600}
+.pos[data-side="long"]{border-color:color-mix(in srgb,var(--up) 45%,var(--line))}
+.pos[data-side="short"]{border-color:color-mix(in srgb,var(--down) 45%,var(--line))}
+.group{display:flex;flex-direction:column;gap:8px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:transparent;color:var(--ink);font:500 13px var(--mono);padding:8px 0;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--sans);padding:11px 12px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .06s,filter .15s,background .15s}
+.btn:hover:not(:disabled){filter:brightness(1.06)}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:focus-visible,.seg button:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn kbd{font:500 11px var(--mono);opacity:.75;border:1px solid currentColor;border-radius:3px;padding:0 4px}
+.btn.long{background:var(--up);border-color:var(--up);color:#fff}
+.btn.short{background:var(--down);border-color:var(--down);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.wide{grid-column:1/-1}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted);font-weight:500;font-size:13px;padding:6px}
+select{font:500 13px var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px 8px}
+.hint{font-size:12.5px;color:var(--muted);margin:0;text-wrap:pretty}
+
+/* log */
+.log{padding:16px;display:flex;flex-direction:column;gap:12px}
+.log-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+.log-head h2{font-family:var(--display);font-weight:800;font-size:20px;margin:0}
+.table-scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:500;border-bottom-color:var(--line)}
+th:first-child,td:first-child,.log-table th:nth-child(-n+4),.log-table td:nth-child(-n+4){text-align:left}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.pill{font:600 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px}
+.pill.long{background:color-mix(in srgb,var(--up) 16%,transparent);color:var(--up)}
+.pill.short{background:color-mix(in srgb,var(--down) 16%,transparent);color:var(--down)}
+.empty{color:var(--muted);font-size:14px;margin:0}
+.pill.neutral{background:var(--future);color:var(--muted)}
+.pill.tag{background:transparent;border:1px solid var(--line);color:var(--muted);text-transform:none;letter-spacing:0;font-weight:500}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags button{border:1px solid var(--line);background:transparent;color:var(--ink);font:500 12.5px var(--sans);padding:5px 10px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center}
+.tags button kbd{font:500 10.5px var(--mono);color:var(--muted)}
+.tags button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tags button[aria-pressed="true"] kbd{color:inherit;opacity:.8}
+.tags button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.verdict{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;padding:12px 14px;border-radius:8px;background:var(--future);border:1px solid var(--line)}
+.verdict p{margin:0;max-width:70ch;text-wrap:pretty}
+.edge-table td:first-child{font-family:var(--sans)}
+.edge-table tr.total td{font-weight:600;border-top:1px solid var(--line)}
+.foot{font-size:12.5px;color:var(--muted);margin:0;max-width:80ch;text-wrap:pretty}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:8px 14px;border-radius:7px;font-size:13.5px;box-shadow:var(--shadow);transition:opacity .2s;pointer-events:none}
+body{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(40px,env(safe-area-inset-bottom))}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#chart{touch-action:pan-y}
+@media (hover:none){kbd{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Blind Tape</h1>
+      <p>Read raw price action on real charts with the ticker, date and price level hidden. <b>Trade</b> it bar by bar, or <b>Call it</b>: say up or down for the next 5 bars and get scored straight away. Every chart is one real trading day on 5-min bars, from the last three months, with the session before it for context.</p>
+    </div>
+    <div class="stats" aria-live="polite">
+      <div class="stat"><span class="label" id="st-l1">Equity</span><span class="v" id="st-eq">$10,000.00</span></div>
+      <div class="stat"><span class="label" id="st-l2">Total P&amp;L</span><span class="v" id="st-pnl">$0.00</span></div>
+      <div class="stat"><span class="label" id="st-l3">Win rate</span><span class="v" id="st-win">–</span></div>
+      <div class="stat"><span class="label" id="st-l4">Trades</span><span class="v" id="st-n">0</span></div>
+    </div>
+  </header>
+
+  <div class="main">
+    <section class="card chart-card" aria-label="Price chart">
+      <div class="chart-head">
+        <span class="ticker" id="ticker">XXXX</span>
+        <span class="tag" id="round-tag">Chart 1</span>
+        <span class="ohlc num" id="ohlc"></span>
+        <span class="spacer"></span>
+        <label class="toggle"><input type="checkbox" id="ma-toggle"> <span id="ma-label">MA 20 / 50</span></label>
+        <span class="review-ctl" id="review-ctl" hidden>
+          <label class="toggle"><input type="checkbox" id="setups-toggle" checked> Setups</label>
+          <label class="toggle"><input type="checkbox" id="structure-toggle" checked> Structure</label>
+          <button class="btn small" id="btn-summary" type="button">Summary</button>
+          <button class="btn small primary" id="btn-next-chart2" type="button">Next chart <kbd>N</kbd></button>
+        </span>
+      </div>
+      <div class="legend" id="setup-legend" hidden>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
+        <div class="loading" id="loading">Loading price history…</div>
+        <div class="overlay" id="overlay" hidden>
+          <div class="box">
+            <span class="label" id="ov-label">Chart complete</span>
+            <h2 id="ov-title">Round over</h2>
+            <div class="reveal">
+              <span class="reveal-tk" id="ov-tk"></span>
+              <span class="reveal-name" id="ov-name"></span>
+              <span class="reveal-dates num" id="ov-dates"></span>
+            </div>
+            <dl id="ov-dl"></dl>
+            <div class="setups-sum" id="ov-setups"></div>
+            <details class="how">
+              <summary>How setups are found</summary>
+              <ul id="how-list"></ul>
+            </details>
+            <div class="actions">
+              <button class="btn" id="btn-review" type="button">Review chart</button>
+              <button class="btn primary" id="btn-next-chart" type="button">Next chart <kbd>N</kbd></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="progress" aria-hidden="true"><i id="prog"></i></div>
+    </section>
+
+    <aside class="card panel" aria-label="Game controls">
+      <div class="seg game-seg" id="game-seg" role="group" aria-label="Game">
+        <button type="button" data-game="trade">Trade</button>
+        <button type="button" data-game="call">Call it</button>
+      </div>
+      <div class="panel-body" id="trade-panel">
+      <div class="pos" id="pos" data-side="flat">
+        <span class="label">Position</span>
+        <span class="pos-side" id="pos-side">Flat</span>
+        <span class="pos-sub num" id="pos-sub">No open trade</span>
+        <span class="pos-pnl" id="pos-pnl">$0.00</span>
+      </div>
+
+      <div class="group">
+        <span class="label">Size (share of equity)</span>
+        <div class="seg" id="size-seg" role="group" aria-label="Position size">
+          <button type="button" data-i="0">25%</button>
+          <button type="button" data-i="1">50%</button>
+          <button type="button" data-i="2">100%</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Trade</span>
+        <div class="row">
+          <button class="btn long" id="btn-long" type="button">Long <kbd>B</kbd></button>
+          <button class="btn short" id="btn-short" type="button">Short <kbd>S</kbd></button>
+          <button class="btn wide" id="btn-close" type="button">Close position <kbd>C</kbd></button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Time</span>
+        <div class="row">
+          <button class="btn primary" id="btn-step" type="button">Next bar <kbd>Space</kbd></button>
+          <button class="btn" id="btn-skip" type="button">+5 bars <kbd>F</kbd></button>
+          <button class="btn" id="btn-play" type="button">Play <kbd>P</kbd></button>
+          <select id="speed" aria-label="Playback speed">
+            <option value="700">Slow</option>
+            <option value="320" selected>Normal</option>
+            <option value="120">Fast</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 4:00 PM close.</p>
+      </div>
+      <div class="panel-body" id="call-panel" hidden>
+        <div class="pos" id="call-result" data-res="none">
+          <span class="label">Your last call</span>
+          <span class="pos-side" id="call-head">Up or down?</span>
+          <span class="pos-sub num" id="call-sub"></span>
+          <span class="pos-sub" id="call-score"></span>
+        </div>
+        <div class="group">
+          <span class="label" id="call-label">Call the next 5 bars</span>
+          <div class="row">
+            <button class="btn long call" id="btn-up" type="button">▲ Up <kbd>↑</kbd></button>
+            <button class="btn short call" id="btn-down" type="button">▼ Down <kbd>↓</kbd></button>
+            <button class="btn wide" id="btn-pass" type="button">Pass <kbd>→</kbd></button>
+          </div>
+        </div>
+        <p class="hint">Each call is scored on the close 5 bars later. Pass moves ahead 5 bars without scoring. You get a new call every 5 bars until the chart ends, then the stock is revealed.</p>
+      </div>
+      <button class="btn ghost" id="btn-new" type="button">Skip to a new chart</button>
+    </aside>
+  </div>
+
+  <section class="card log" aria-label="Your edge by setup">
+    <div class="log-head"><h2 id="edge-title">Your edge by setup</h2></div>
+    <div class="verdict"><span class="pill neutral" id="edge-badge">No trades yet</span><p id="edge-text"></p></div>
+    <div class="table-scroll">
+      <table class="edge-table">
+        <thead><tr><th>Setup</th><th id="th-n">Trades</th><th id="th-win">Win rate</th><th id="th-avg">Avg return</th><th id="th-long">Always long</th><th id="th-pnl">P&amp;L</th><th>Beat random</th></tr></thead>
+        <tbody id="edge-body"></tbody>
+      </table>
+    </div>
+    <p class="foot"><b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
+  </section>
+
+  <section class="card log" aria-label="Trade history">
+    <div class="log-head">
+      <h2 id="log-title">Trade history</h2>
+      <div class="confirm" id="reset-wrap">
+        <button class="btn ghost" id="btn-reset" type="button">Reset account</button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table class="log-table">
+        <thead id="log-thead"><tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Bars</th><th>Return</th><th>P&amp;L</th></tr></thead>
+        <tbody id="log-body"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="log-empty">No trades yet. Pick a side on the chart above.</p>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" style="opacity:0"></div>
+
+<script>
+(() => {
+const START_CASH = 10000, HIST = 90, FWD = 80, SIZES = [0.25, 0.5, 1];
+// 5-min rounds: previous session (78 bars) + first 30 minutes of today as history, then trade to the close.
+const DAY = 78, M5_HIST = DAY + 6;
+const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json']}};
+const MODE_TYPES = {daily: ['bos', 'failed', 'retest', 'hl', 'inside', 'range'], m5: ['orb', 'pdhl', 'bos', 'failed', 'retest', 'hl', 'inside', 'range']};
+const CALL_N = 5;
+const gameOf = r => (r && r.game) || 'trade';
+const modeOf = r => (r && r.mode) || 'daily';
+const H = r => r.hist || HIST;
+const FW = r => r.end - (H(r) - 1);
+const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
+const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
+// Clock time (ET) at the open of 5-min bar i, or at its close with close=true.
+const clock = (i, close) => { const m = 570 + (i % DAY) * 5 + (close ? 5 : 0), h = Math.floor(m / 60), mm = m % 60; return (h > 12 ? h - 12 : h) + ':' + String(mm).padStart(2, '0'); };
+const KEY = 'blindtape.v2';
+const TAGS = [
+  {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
+  {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
+  {id: 'orb', label: 'Opening-range break'}, {id: 'pdhl', label: 'Prior-day high/low break'}, {id: 'vwap', label: 'VWAP reclaim/reject'},
+  {id: 'bos', label: 'Break of structure'}, {id: 'failed', label: 'Failed breakout'}, {id: 'retest', label: 'Retest'},
+  {id: 'hl', label: 'Higher low / lower high'}, {id: 'inside', label: 'Inside-bar breakout'},
+  {id: 'none', label: 'No setup'}
+];
+const tagLabel = id => (TAGS.find(t => t.id === id) || TAGS[TAGS.length - 1]).label;
+const EDGE_INTRO = n => `Each ${n} is tagged automatically with the price-action setup it lined up with, using the rules shown at the end of every chart, or No setup. This table then shows whether your direction beats a coin flip on the exact same bars.`;
+const PRIORITY = ['orb', 'pdhl', 'failed', 'bos', 'retest', 'hl', 'inside', 'range'];
+// Tag = the setup in your direction that fired on the entry day or up to 2 days before it (the latest one wins).
+function autoTag(r, side, entryIdx) {
+  const {signals} = detectSetups(r, H(r) - 3, entryIdx);
+  const hits = signals.filter(x => x.dir === side && x.i >= entryIdx - 2 && x.i <= entryIdx)
+    .sort((a, b) => b.i - a.i || PRIORITY.indexOf(a.type) - PRIORITY.indexOf(b.type));
+  return hits.length ? hits[0].type : 'none';
+}
+const $ = s => document.querySelector(s);
+let S, playing = false, timer = null, hoverI = null, hoverY = null, bound = false, DATA = null, animating = false;
+const DATAS = {daily: null, m5: null};
+
+const fmt$ = (x, sign) => (sign && x > 0 ? '+' : x < 0 ? '−' : '') + '$' + Math.abs(x).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const fmtP = x => x.toFixed(2);
+const fmtPct = x => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x * 100).toFixed(2) + '%';
+const cls = x => x > 0 ? 'up' : x < 0 ? 'down' : '';
+const r2 = x => Math.round(x * 100) / 100;
+
+const fmtDate = day => new Date(day * 864e5).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'});
+
+function freshState() { return {cash: START_CASH, trades: [], calls: [], roundNo: 0, sizeIdx: 1, showMA: false, round: null, recent: [], showSetups: true, showStructure: true, mode: 'm5', game: 'trade', paV: 1}; }
+function load() { try { const j = localStorage.getItem(KEY); if (j) { const s = JSON.parse(j); if (s && s.round && s.round.bars) return s; } } catch (e) {} return null; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+// data.json: per symbol {s, n, d (day deltas), o, h, l, c, v}. Days are rebuilt into absolute day numbers.
+// tape-5m-N.json (split to stay under the per-file size limit): per symbol {s, n, days: [[d, k, g, P, V]]}, each day exactly 78 bars from 9:30 ET, decoded here
+// to {d, o, h, l, c, v, g}. Prices are integers in units of 10^-k. P holds 4 ints per bar: open - prev close
+// (0 before the first bar), close - open, high - max(open, close), min(open, close) - low. V holds volume as
+// mantissa*10 + exponent. g marks a day whose previous session is missing.
+// Both are packed as text: zigzag ints in base-32 digits, least significant first, the last digit drawn from TERM.
+const PK_CONT = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ012345', PK_TERM = 'abcdefghijklmnopqrstuvwxyz6789_-';
+const PK_C = {}, PK_T = {};
+for (let i = 0; i < 32; i++) { PK_C[PK_CONT[i]] = i; PK_T[PK_TERM[i]] = i; }
+function unpackInts(str) {
+  const out = []; let z = 0, mul = 1;
+  for (const ch of str) {
+    const t = PK_T[ch];
+    if (t !== undefined) { z += t * mul; out.push(z % 2 ? -(z + 1) / 2 : z / 2); z = 0; mul = 1; }
+    else { z += PK_C[ch] * mul; mul *= 32; }
+  }
+  return out;
+}
+function decodeDay([d, k, g, Ps, Vs]) {
+  const u = 10 ** k, P = unpackInts(Ps), V = unpackInts(Vs), o = [], h = [], l = [], c = [], v = [];
+  let pc = 0;
+  for (let i = 0; i < V.length; i++) {
+    const O = pc + P[4 * i], C = O + P[4 * i + 1];
+    o.push(O / u); c.push(C / u); h.push((Math.max(O, C) + P[4 * i + 2]) / u); l.push((Math.min(O, C) - P[4 * i + 3]) / u); pc = C;
+    v.push(Math.floor(V[i] / 10) * 10 ** (V[i] % 10));
+  }
+  return g ? {d, o, h, l, c, v, g: 1} : {d, o, h, l, c, v};
+}
+async function loadData(mode = 'daily') {
+  const files = MODES[mode].files || [MODES[mode].file];
+  const get = async f => {
+    const res = await fetch(f);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  };
+  const prep = raw => {
+    if (mode === 'daily') raw.forEach(x => { let day = 0; x.day = x.d.map(dd => (day += dd)); });
+    else raw.forEach(x => { x.days = x.days.map(decodeDay); });
+    return raw;
+  };
+  const first = prep(await get(files[0]));
+  files.slice(1).forEach(f => get(f).then(p => { first.push(...prep(p)); }).catch(() => {}));
+  return first;
+}
+async function ensureData(mode) { if (!DATAS[mode]) DATAS[mode] = await loadData(mode); return DATAS[mode]; }
+async function setMode(mode) {
+  if (!MODES[mode] || (S.mode || 'daily') === mode) return;
+  stopPlay();
+  const ld = $('#loading'); ld.textContent = 'Loading ' + MODES[mode].label + ' price history…'; ld.hidden = false;
+  try { await ensureData(mode); } catch (e) { ld.hidden = true; toast('Could not load ' + MODES[mode].label + ' data. Try again.'); return; }
+  const r = R();
+  if (r && !r.done && r.pos) closePos(true);
+  S.mode = mode; DATA = DATAS[mode];
+  newRound(); hoverI = null; hoverY = null; ld.hidden = true; edgeKey = null; commit();
+  toast(MODES[mode].label + ' mode');
+}
+
+function newRound() { newRoundRaw(); S.round.game = S.game || 'trade'; }
+function setGame(g) {
+  if ((S.game || 'trade') === g || !DATA || animating) return;
+  stopPlay();
+  const r = R(); if (r && !r.done && r.pos) closePos(true);
+  S.game = g; newRound(); hoverI = null; hoverY = null; edgeKey = null; commit();
+  toast(g === 'call' ? 'Call it: up or down for the next 5 bars' : 'Trade mode');
+}
+// Record a call (dir 1 up, -1 down) or a pass (0), then reveal the next CALL_N bars.
+function makeCall(dir) {
+  const r = R(); if (!r || r.done || gameOf(r) !== 'call' || animating) return;
+  const from = r.idx, to = Math.min(from + CALL_N, r.end), move = r.bars[to].c / r.bars[from].c - 1;
+  if (dir) {
+    S.calls.unshift({round: S.roundNo, mode: modeOf(r), ticker: r.ticker, side: dir, entryIdx: from, exitIdx: to, entry: r.bars[from].c, exit: r.bars[to].c, pnl: 0, hit: dir * move > 0, tag: autoTag(r, dir, from), auto: true, rules: 2});
+    if (S.calls.length > 3000) S.calls.length = 3000;
+  }
+  r.lastCall = {dir, move, hit: dir * move > 0};
+  const finish = () => {
+    animating = false;
+    if (r.idx + CALL_N > r.end) { r.idx = r.end; r.done = true; }
+    commit();
+  };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { r.idx = to; finish(); return; }
+  animating = true; render();
+  const tick = () => { r.idx++; if (r.idx < to) { render(); setTimeout(tick, 70); } else finish(); };
+  setTimeout(tick, 70);
+}
+
+// Pick a random real window, then rescale every price by one constant so the level can't give the stock away.
+function newRoundRaw() {
+  if ((S.mode || 'daily') === 'm5') return newRound5m();
+  S.recent = S.recent || [];
+  let k, tries = 0;
+  do { k = Math.floor(Math.random() * DATA.length); } while (S.recent.includes(DATA[k].s) && ++tries < 20);
+  const x = DATA[k], len = HIST + FWD;
+  const start = Math.floor(Math.random() * (x.c.length - len));
+  const target = Math.exp(Math.log(15) + Math.random() * Math.log(400 / 15));
+  const scale = target / x.c[start + HIST - 1];
+  const bars = [];
+  for (let i = start; i < start + len; i++) {
+    const o = r2(x.o[i] * scale), c = r2(x.c[i] * scale);
+    bars.push({o, c, h: Math.max(r2(x.h[i] * scale), o, c), l: Math.min(r2(x.l[i] * scale), o, c), v: x.v[i]});
+  }
+  S.recent = [x.s, ...S.recent].slice(0, 8);
+  S.roundNo++;
+  S.round = {
+    ticker: x.s.split(':')[1], name: x.n, scale,
+    from: x.day[start + HIST - 1], to: x.day[start + len - 1], histFrom: x.day[start],
+    realStart: x.c[start + HIST - 1], realEnd: x.c[start + len - 1],
+    bars, idx: HIST - 1, end: len - 1, pos: null, startEq: S.cash, done: false
+  };
+}
+function newRound5m() {
+  S.recent = S.recent || [];
+  let k, tries = 0;
+  do { k = Math.floor(Math.random() * DATA.length); } while (S.recent.includes(DATA[k].s) && ++tries < 20);
+  // g marks a day whose previous session is missing from the data, so it has no true prior day to show.
+  const x = DATA[k]; let j; do { j = 1 + Math.floor(Math.random() * (x.days.length - 1)); } while (x.days[j].g);
+  const pd = x.days[j - 1], td = x.days[j];
+  const target = Math.exp(Math.log(15) + Math.random() * Math.log(400 / 15));
+  const scale = target / td.c[M5_HIST - DAY - 1];
+  const bars = [];
+  for (const d of [pd, td]) for (let i = 0; i < DAY; i++) {
+    const o = r2(d.o[i] * scale), c = r2(d.c[i] * scale);
+    bars.push({o, c, h: Math.max(r2(d.h[i] * scale), o, c), l: Math.min(r2(d.l[i] * scale), o, c), v: d.v[i]});
+  }
+  S.recent = [x.s, ...S.recent].slice(0, 8);
+  S.roundNo++;
+  S.round = {
+    mode: 'm5', ticker: x.s.split(':')[1], name: x.n, scale, from: td.d, to: td.d, prevDay: pd.d,
+    realStart: td.c[M5_HIST - DAY - 1], realEnd: td.c[DAY - 1],
+    bars, hist: M5_HIST, idx: M5_HIST - 1, end: 2 * DAY - 1, pos: null, startEq: S.cash, done: false
+  };
+}
+const R = () => S.round;
+const price = () => R().bars[R().idx].c;
+const unreal = () => { const p = R().pos; return p ? r2(p.side * p.qty * (price() - p.entry)) : 0; };
+const equity = () => S.cash + unreal();
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.opacity = 0, 1600); }
+
+function openPos(side) {
+  const r = R(); if (!r || r.done) return;
+  if (r.pos && r.pos.side === side) { toast(side > 0 ? 'Already long' : 'Already short'); return; }
+  if (r.pos) closePos(true);
+  const qty = Math.floor(equity() * SIZES[S.sizeIdx] / price());
+  if (qty < 1) { toast('Not enough equity for one share'); return; }
+  r.pos = {side, qty, entry: price(), entryIdx: r.idx};
+  toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(price()));
+  commit();
+}
+function closePos(quiet) {
+  const r = R(), p = r && r.pos; if (!p) return;
+  const pnl = unreal();
+  S.cash = r2(S.cash + pnl);
+  S.trades.unshift({round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.qty, entry: p.entry, exit: price(), pnl, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r)});
+  if (S.trades.length > 500) S.trades.length = 500;
+  r.pos = null;
+  if (!quiet) toast('Closed ' + fmt$(pnl, true));
+  commit();
+}
+function step(n = 1) {
+  const r = R(); if (!r || r.done) return;
+  r.idx = Math.min(r.end, r.idx + n);
+  if (r.idx >= r.end) endRound(); else commit();
+}
+function endRound() {
+  const r = R();
+  if (r.pos) closePos(true);
+  r.done = true; stopPlay(); commit();
+}
+function nextChart() {
+  if (!DATA) return;
+  const r = R();
+  if (!r.done && r.pos) closePos(true);
+  stopPlay(); newRound(); hoverI = null; hoverY = null; commit();
+}
+function startPlay() {
+  if (!R() || R().done) return;
+  playing = true; $('#btn-play').innerHTML = 'Pause <kbd>P</kbd>';
+  clearInterval(timer); timer = setInterval(() => step(1), +$('#speed').value);
+}
+function stopPlay() { playing = false; clearInterval(timer); $('#btn-play').innerHTML = 'Play <kbd>P</kbd>'; }
+
+function commit() { save(); render(); }
+
+
+function render() {
+  const r = R(), eq = equity(), tot = eq - START_CASH, call = gameOf(r) === 'call';
+  document.querySelectorAll('#game-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.game === gameOf(r))));
+  $('#trade-panel').hidden = call; $('#call-panel').hidden = !call;
+  const pnlEl = $('#st-pnl');
+  if (call) {
+    const cs = S.calls, n = cs.length, hits = cs.filter(c => c.hit).length, st = callStats();
+    let streak = 0; while (streak < n && cs[streak].hit) streak++;
+    $('#st-l1').textContent = 'Calls'; $('#st-eq').textContent = n;
+    $('#st-l2').textContent = 'Hit rate'; pnlEl.textContent = n ? Math.round(hits / n * 100) + '%' : '–'; pnlEl.className = 'v';
+    $('#st-l3').textContent = 'Beat random'; $('#st-win').textContent = st && n >= 5 ? Math.round(st.pct * 100) + '%' : '–';
+    $('#st-l4').textContent = 'Streak'; $('#st-n').textContent = streak;
+  } else {
+    const closed = S.trades, wins = closed.filter(t => t.pnl > 0).length;
+    $('#st-l1').textContent = 'Equity'; $('#st-eq').textContent = fmt$(eq);
+    $('#st-l2').textContent = 'Total P&L'; pnlEl.textContent = fmt$(tot, true); pnlEl.className = 'v ' + cls(tot);
+    $('#st-l3').textContent = 'Win rate'; $('#st-win').textContent = closed.length ? Math.round(wins / closed.length * 100) + '%' : '–';
+    $('#st-l4').textContent = 'Trades'; $('#st-n').textContent = closed.length;
+  }
+
+  $('#ticker').textContent = r.done ? r.ticker : '???';
+  $('#btn-new').disabled = !DATA; $('#btn-next-chart').disabled = !DATA;
+  const m5 = modeOf(r) === 'm5';
+  $('#round-tag').textContent = 'Chart ' + S.roundNo;
+  $('#ma-label').textContent = m5 ? 'MA 20 / 50 · VWAP' : 'MA 20 / 50';
+  const played = r.idx - (H(r) - 1);
+  $('#prog').style.width = (played / FW(r) * 100) + '%';
+
+  const pos = $('#pos'), p = r.pos, u = unreal();
+  pos.dataset.side = p ? (p.side > 0 ? 'long' : 'short') : 'flat';
+  $('#pos-side').textContent = p ? (p.side > 0 ? 'Long' : 'Short') : 'Flat';
+  $('#pos-side').className = 'pos-side ' + (p ? (p.side > 0 ? 'up' : 'down') : '');
+  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  const pp = $('#pos-pnl'); pp.textContent = fmt$(u, true); pp.className = 'pos-pnl ' + cls(u);
+
+  document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
+  $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
+  $('#btn-close').disabled = r.done || !p;
+  $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
+  $('#ma-toggle').checked = S.showMA;
+  $('#setups-toggle').checked = S.showSetups !== false;
+  $('#structure-toggle').checked = S.showStructure !== false;
+  if (call) {
+    const lc = r.lastCall, rc = S.calls.filter(c => c.round === S.roundNo), rh = rc.filter(c => c.hit).length;
+    const callsLeft = r.done ? 0 : Math.floor((r.end - r.idx) / CALL_N);
+    $('#call-result').dataset.res = !lc || !lc.dir ? 'none' : lc.hit ? 'hit' : 'miss';
+    $('#call-head').textContent = !lc ? 'Up or down?' : !lc.dir ? 'Passed' : lc.hit ? '✓ Right' : '✗ Wrong';
+    $('#call-head').className = 'pos-side ' + (!lc || !lc.dir ? '' : lc.hit ? 'up' : 'down');
+    $('#call-sub').textContent = !lc ? `Where will price be ${fwdLabel(r)} from now?` : `${lc.dir ? 'You called ' + (lc.dir > 0 ? 'up' : 'down') : 'You passed'} · next ${fwdLabel(r)} ${fmtPct(lc.move)}`;
+    $('#call-score').textContent = (rc.length ? `${rh} of ${rc.length} right on this chart` : 'No calls on this chart yet') + (r.done ? '' : ` · ${callsLeft} call${callsLeft === 1 ? '' : 's'} left`);
+    $('#call-label').textContent = 'Call the next 5 ' + (m5 ? 'bars (25 min)' : 'days');
+    $('#btn-up').disabled = $('#btn-down').disabled = $('#btn-pass').disabled = r.done || animating;
+  }
+  $('#review-ctl').hidden = !(r.done && r.review);
+  $('#setup-legend').hidden = !(r.done && r.review && (S.showSetups !== false || S.showStructure !== false));
+  if (r.done) renderHow(r);
+
+  // overlay
+  const ov = $('#overlay');
+  if (r.done) {
+    const start = r.bars[H(r) - 1].c, endP = r.bars[r.end].c;
+    const realStart = r.realStart != null ? r.realStart : start / r.scale, realEnd = r.realEnd != null ? r.realEnd : endP / r.scale, mv = realEnd / realStart - 1;
+    const rp = S.cash - r.startEq, rt = S.trades.filter(t => t.round === S.roundNo), rc = S.calls.filter(c => c.round === S.roundNo), rcHits = rc.filter(c => c.hit).length;
+    $('#ov-label').textContent = 'Chart ' + S.roundNo + ' complete · it was';
+    $('#ov-tk').textContent = r.ticker;
+    $('#ov-name').textContent = r.name + ' · real price ' + fmtP(realStart) + ' → ' + fmtP(realEnd);
+    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 AM to 4:00 PM ET' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
+    const moveDd = `<dd><span class="${cls(mv)}">${fmtPct(mv)}</span></dd>`;
+    if (call) {
+      const avgYour = rc.length ? rc.reduce((a, c) => a + c.side * (c.exit / c.entry - 1), 0) / rc.length : 0, upHits = rc.filter(c => c.exit > c.entry).length;
+      $('#ov-title').textContent = rc.length === 0 ? 'You passed on every call' : `${rcHits} of ${rc.length} calls right`;
+      $('#ov-dl').innerHTML = `<dt>Stock moved</dt>${moveDd}<dt>Your calls</dt><dd>${rcHits} of ${rc.length} right</dd>` +
+        `<dt>Avg move your way</dt><dd><span class="${cls(avgYour)}">${rc.length ? fmtPct(avgYour) : '–'}</span></dd><dt>Always up would be</dt><dd>${upHits} of ${rc.length} right</dd>`;
+    } else {
+      const bh = r2(Math.floor(r.startEq * SIZES[S.sizeIdx] / start) * (endP - start));
+      $('#ov-title').textContent = rt.length === 0 ? 'You sat this one out' : rp > 0 ? 'You finished ahead' : rp < 0 ? 'The tape won this one' : 'Broke even';
+      $('#ov-dl').innerHTML = `<dt>Stock moved</dt>${moveDd}<dt>Your P&amp;L this chart</dt><dd><span class="${cls(rp)}">${fmt$(rp, true)}</span></dd>` +
+        `<dt>Trades</dt><dd>${rt.length}</dd><dt>Buy &amp; hold would be</dt><dd><span class="${cls(bh)}">${fmt$(bh, true)}</span></dd>`;
+    }
+    renderSetupSummary(r);
+    ov.hidden = !!r.review;
+  } else ov.hidden = true;
+
+  renderOhlc();
+  renderLog();
+  renderEdge();
+  draw();
+}
+
+function renderOhlc() {
+  const r = R(), i = hoverI != null ? hoverI : r.idx, b = r.bars[i], prev = r.bars[i - 1];
+  const ch = prev ? b.c / prev.c - 1 : 0;
+  // Volume shown relative to its 20-bar average, since raw share counts would identify the stock.
+  let s = 0, n = 0; for (let k = Math.max(0, i - 20); k < i; k++) { s += r.bars[k].v; n++; }
+  const rv = n ? b.v / (s / n) : 1;
+  $('#ohlc').innerHTML = (modeOf(r) === 'm5' ? `<b>${clock(i)}</b> ` : '') + `O <b>${fmtP(b.o)}</b> H <b>${fmtP(b.h)}</b> L <b>${fmtP(b.l)}</b> C <b>${fmtP(b.c)}</b> <span class="${cls(ch)}">${fmtPct(ch)}</span> Vol <b>${rv.toFixed(1)}× avg</b>`;
+}
+
+const LOG_HEAD = {
+  trade: '<tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Bars</th><th>Return</th><th>P&amp;L</th></tr>',
+  call: '<tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Call</th><th>From</th><th>To</th><th>Move</th><th>Result</th></tr>'
+};
+function renderLog() {
+  const g = gameOf(R());
+  if ($('#log-thead').dataset.g !== g) { $('#log-thead').innerHTML = LOG_HEAD[g]; $('#log-thead').dataset.g = g; }
+  if (g === 'call') {
+    $('#log-title').textContent = 'Call history';
+    const rows = S.calls.slice(0, 60);
+    $('#log-empty').textContent = 'No calls yet. Use Up or Down on the right to call the next 5 bars.';
+    $('#log-empty').hidden = rows.length > 0;
+    $('#log-body').innerHTML = rows.map(c => {
+      const hidden = c.round === S.roundNo && !R().done, mv = c.exit / c.entry - 1;
+      return `<tr><td>#${c.round}${c.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : c.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${tagLabel(c.tag)}</span>`}</td>` +
+        `<td><span class="pill ${c.side > 0 ? 'long' : 'short'}">${c.side > 0 ? 'Up' : 'Down'}</span></td><td>${fmtP(c.entry)}</td><td>${fmtP(c.exit)}</td><td class="${cls(mv)}">${fmtPct(mv)}</td><td class="${c.hit ? 'up' : 'down'}">${c.hit ? '✓ Right' : '✗ Wrong'}</td></tr>`;
+    }).join('');
+    return;
+  }
+  $('#log-title').textContent = 'Trade history';
+  $('#log-empty').textContent = 'No trades yet. Pick a side on the chart above.';
+  const rows = S.trades.slice(0, 60);
+  $('#log-empty').hidden = rows.length > 0;
+  $('#log-body').innerHTML = rows.map(t => {
+    const ret = t.side * (t.exit / t.entry - 1);
+    const hidden = t.round === S.roundNo && !R().done;
+    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td></tr>`;
+  }).join('');
+}
+
+// ---------- setup detection (answer key) ----------
+const SETUP_CODE = {breakout: 'BO', pullback: 'PB', trend: 'TC', reversal: 'REV', range: 'RF', orb: 'ORB', pdhl: 'PD', vwap: 'VW', bos: 'BOS', failed: 'FB', retest: 'RT', hl: 'HL', inside: 'IB'};
+const codeOf = (t, dir) => t === 'hl' ? (dir < 0 ? 'LH' : 'HL') : SETUP_CODE[t];
+const swingN = m5 => m5 ? 2 : 3;
+const DESC = {
+  bos: () => 'a close above the most recent swing high (long), or below the most recent swing low (short).',
+  failed: u => `price trades above the latest swing high, then within 3 ${u}s closes back below it (short). Mirrored at swing lows (long).`,
+  retest: (u, m5) => `after a break of structure, price comes back to within ⅓ ATR of the broken level within ${m5 ? 20 : 15} ${u}s and closes back on the breakout side.`,
+  hl: () => 'in an uptrend (the last swing high and swing low are both above the ones before), a new swing low forms above the previous one: long. In a downtrend, a new lower swing high: short.',
+  inside: u => `a ${u} trades inside the previous ${u}'s range, then the next ${u} closes beyond that previous ${u}'s high (long) or low (short).`,
+  range: u => `the previous 10 ${u}s fit inside 3 ATR; the ${u} tags the top or bottom of that range and closes back inside.`,
+  orb: () => 'the first 5-min close above the high, or below the low, of the first 30 minutes (9:30–10:00).',
+  pdhl: () => "the first close today that crosses above the previous session's high, or below its low."
+};
+function renderHow(r) {
+  const m = modeOf(r), m5 = m === 'm5', u = m5 ? 'bar' : 'day', N = swingN(m5);
+  $('#how-list').innerHTML = MODE_TYPES[m].map(t => `<li><b>${tagLabel(t)} (${t === 'hl' ? 'HL/LH' : SETUP_CODE[t]}):</b> ${DESC[t](u, m5)}</li>`).join('') +
+    `<li>A swing high is a ${u} whose high is above the ${N} ${u}s on each side, so it is only known ${N} ${u}s later; swing lows mirror that. Every setup uses only what was known at that ${u}'s close. “Next ${fwdLabel(r)}” is close to close, in the setup's direction. A trade or call counts as taking a setup if it went the same way within 2 ${u}s of it.</li>`;
+  $('#setup-legend').innerHTML = (S.showSetups !== false ? MODE_TYPES[m].map(t => `<span><b class="code">${t === 'hl' ? 'HL/LH' : SETUP_CODE[t]}</b> ${tagLabel(t)}</span>`).join('') + '<span>▲ long · ▼ short</span>' : '') +
+    (S.showStructure !== false ? '<span><b>HH HL LH LL</b> swing points · dotted lines: swing levels until a close breaks them</span>' : '') +
+    (m5 && S.showSetups !== false ? '<span>dashed lines: prior-day high/low, opening range</span>' : '');
+}
+// Rules only look at bars up to and including the signal bar, so nothing peeks ahead.
+function detectSetups(r, from, to) { return detectPA(r.bars, from, to, modeOf(r) === 'm5'); }
+function indicators(bars) {
+  const n = bars.length, tr = [], atr = [], s20 = [], s50 = [];
+  for (let i = 0; i < n; i++) {
+    const b = bars[i], pc = i ? bars[i - 1].c : b.c;
+    tr[i] = Math.max(b.h - b.l, Math.abs(b.h - pc), Math.abs(b.l - pc));
+    atr[i] = i >= 14 ? tr.slice(i - 13, i + 1).reduce((a, x) => a + x, 0) / 14 : null;
+    s20[i] = sma(bars, i, 20); s50[i] = sma(bars, i, 50);
+  }
+  return {atr, s20, s50};
+}
+function vwapSeries(bars) {
+  const v = []; let pv = 0, vv = 0;
+  for (let i = DAY; i < bars.length; i++) { const b = bars[i], tp = (b.h + b.l + b.c) / 3; pv += tp * b.v; vv += b.v; v[i] = vv ? pv / vv : tp; }
+  return v;
+}
+function mergeBoxes(ranges) {
+  const boxes = [];
+  for (const g of ranges) {
+    const last = boxes[boxes.length - 1];
+    if (last && g.i0 <= last.i1 + 1) { last.i1 = Math.max(last.i1, g.i1); last.hi = Math.max(last.hi, g.hi); last.lo = Math.min(last.lo, g.lo); }
+    else boxes.push({...g});
+  }
+  return boxes;
+}
+// Price-action rules. In 5-min mode bars = previous session (0-77) + today (78-155).
+function detectPA(bars, from, to, m5) {
+  const N = swingN(m5), {atr} = indicators(bars), gap = m5 ? 6 : 5, maxRetest = m5 ? 20 : 15;
+  const signals = [], lastAt = {}, ranges = [], swings = [], once = {};
+  const add = (type, dir, i) => {
+    const k = type + dir; if (lastAt[k] != null && i - lastAt[k] < gap) return; lastAt[k] = i;
+    if (i < from) return;
+    const f = Math.min(i + 5, to);
+    signals.push({type, dir, i, fwd: f > i ? dir * (bars[f].c / bars[i].c - 1) : null});
+  };
+  const first = (key, fn) => { if (!once[key]) { once[key] = true; fn(); } };
+  const isSwing = (k, hi) => {
+    const v = hi ? bars[k].h : bars[k].l;
+    for (let d = 1; d <= N; d++) {
+      const lft = hi ? bars[k - d].h : bars[k - d].l, rgt = hi ? bars[k + d].h : bars[k + d].l;
+      if (hi ? !(v > lft && v >= rgt) : !(v < lft && v <= rgt)) return false;
+    }
+    return true;
+  };
+  let pdh = -Infinity, pdl = Infinity, orh = -Infinity, orl = Infinity;
+  if (m5) {
+    for (let k = 0; k < DAY; k++) { pdh = Math.max(pdh, bars[k].h); pdl = Math.min(pdl, bars[k].l); }
+    for (let k = DAY; k < DAY + 6; k++) { orh = Math.max(orh, bars[k].h); orl = Math.min(orl, bars[k].l); }
+  }
+  let sh = null, sl = null, psh = null, psl = null, rtUp = null, rtDn = null;
+  for (let i = 2 * N; i <= to; i++) {
+    const b = bars[i], a = atr[i], k = i - N;
+    // A swing is only known N bars after it prints.
+    if (isSwing(k, true)) {
+      psh = sh; sh = {i: k, p: bars[k].h, broken: false, failed: false};
+      swings.push({i: k, p: sh.p, hi: true, label: psh ? (sh.p > psh.p ? 'HH' : 'LH') : ''});
+      if (a && psh && psl && sl && sh.p < psh.p && sl.p < psl.p && b.c < sh.p) add('hl', -1, i);
+    }
+    if (isSwing(k, false)) {
+      psl = sl; sl = {i: k, p: bars[k].l, broken: false, failed: false};
+      swings.push({i: k, p: sl.p, hi: false, label: psl ? (sl.p > psl.p ? 'HL' : 'LL') : ''});
+      if (a && psl && psh && sh && sl.p > psl.p && sh.p > psh.p && b.c > sl.p) add('hl', 1, i);
+    }
+    if (!a) continue;
+    // Break of structure: close beyond the latest swing.
+    if (sh && !sh.broken && b.c > sh.p) { sh.broken = true; add('bos', 1, i); rtUp = {L: sh.p, i}; }
+    if (sl && !sl.broken && b.c < sl.p) { sl.broken = true; add('bos', -1, i); rtDn = {L: sl.p, i}; }
+    // Failed breakout: traded through the swing in the last 3 bars, closed back inside.
+    if (sh && !sh.failed && b.c < sh.p) for (let j = Math.max(sh.i + 1, i - 2); j <= i; j++) if (bars[j].h > sh.p) { sh.failed = true; add('failed', -1, i); break; }
+    if (sl && !sl.failed && b.c > sl.p) for (let j = Math.max(sl.i + 1, i - 2); j <= i; j++) if (bars[j].l < sl.p) { sl.failed = true; add('failed', 1, i); break; }
+    // Retest of a level that just broke.
+    if (rtUp && i > rtUp.i) {
+      const age = i - rtUp.i;
+      if (age > maxRetest || b.c < rtUp.L - a / 2) rtUp = null;
+      else if (age >= 2 && b.l <= rtUp.L + a / 3 && b.c > rtUp.L) { add('retest', 1, i); rtUp = null; }
+    }
+    if (rtDn && i > rtDn.i) {
+      const age = i - rtDn.i;
+      if (age > maxRetest || b.c > rtDn.L + a / 2) rtDn = null;
+      else if (age >= 2 && b.h >= rtDn.L - a / 3 && b.c < rtDn.L) { add('retest', -1, i); rtDn = null; }
+    }
+    // Inside-bar breakout.
+    const mo = bars[i - 2], ib = bars[i - 1];
+    if (ib.h <= mo.h && ib.l >= mo.l) { if (b.c > mo.h) add('inside', 1, i); else if (b.c < mo.l) add('inside', -1, i); }
+    // Range fade.
+    if (!m5 || i - 10 >= DAY) {
+      let rh = -Infinity, rl = Infinity; for (let q = i - 10; q < i; q++) { rh = Math.max(rh, bars[q].h); rl = Math.min(rl, bars[q].l); }
+      if (rh - rl < 3 * a) {
+        if (i >= from) ranges.push({i0: i - 10, i1: i - 1, hi: rh, lo: rl});
+        if (b.h >= rh - .2 * a && b.c <= rh && b.c < b.h) add('range', -1, i);
+        else if (b.l <= rl + .2 * a && b.c >= rl && b.c > b.l) add('range', 1, i);
+      }
+    }
+    // Session levels (5-min only).
+    if (m5 && i > DAY) {
+      const pc = bars[i - 1].c;
+      if (i >= DAY + 6) {
+        if (b.c > orh) first('orb1', () => add('orb', 1, i));
+        if (b.c < orl) first('orb-1', () => add('orb', -1, i));
+      }
+      if (b.c > pdh && pc <= pdh) first('pd1', () => add('pdhl', 1, i));
+      if (b.c < pdl && pc >= pdl) first('pd-1', () => add('pdhl', -1, i));
+    }
+  }
+  return {signals, boxes: mergeBoxes(ranges), swings, levels: m5 ? [{p: pdh, t: 'PDH'}, {p: pdl, t: 'PDL'}, {p: orh, t: 'ORH'}, {p: orl, t: 'ORL'}] : []};
+}
+function roundSetups(r) {
+  if (!r.setups || r.setupsFrom !== H(r) - 3 || r.setupsV !== 2) { r.setups = detectSetups(r, H(r) - 3, r.end); r.setupsFrom = H(r) - 3; r.setupsV = 2; }
+  return r.setups;
+}
+function renderSetupSummary(r) {
+  const call = gameOf(r) === 'call', noun = call ? 'call' : 'trade';
+  const {signals} = roundSetups(r), rt = (call ? S.calls : S.trades).filter(t => t.round === S.roundNo);
+  const takes = sig => rt.filter(t => t.side === sig.dir && t.entryIdx >= sig.i && t.entryIdx <= sig.i + 2);
+  const played = signals.filter(x => x.i >= H(r) - 1);
+  const matched = new Set();
+  const rows = MODE_TYPES[modeOf(r)].map(type => {
+    const list = played.filter(x => x.type === type); if (!list.length) return '';
+    const taken = list.filter(sig => { const tk = takes(sig); tk.forEach(t => matched.add(t)); return tk.length; });
+    const f = list.filter(x => x.fwd != null), avg = f.length ? f.reduce((a, x) => a + x.fwd, 0) / f.length : null;
+    const worked = f.filter(x => x.fwd > 0).length;
+    const you = taken.length ? `you ${call ? 'called' : 'took'} ${taken.length}` : `you ${call ? 'called' : 'took'} none`;
+    return `<div class="srow"><b class="code">${type === 'hl' ? 'HL/LH' : SETUP_CODE[type]}</b><span>${tagLabel(type)} ×${list.length}</span><span class="${avg == null ? '' : cls(avg)} num">${avg == null ? '–' : fmtPct(avg)}</span>` +
+      `<span class="sub">${you} · ${f.length ? `${worked} of ${f.length} moved its way over the next ${fwdLabel(r)}` : 'too late in the chart to score'}</span></div>`;
+  }).join('');
+  const unmatched = rt.filter(t => !matched.has(t) && (t.tag || 'none') === 'none').length;
+  $('#ov-setups').innerHTML = '<span class="label">Setups on this chart · avg next ' + fwdLabel(r) + '</span>' +
+    (rows || '<p class="how" style="margin:0">None of these setups showed up by these rules on this chart.</p>') +
+    (rt.length ? `<p class="how" style="margin:0">${unmatched ? `${unmatched} of your ${rt.length} ${noun}${rt.length === 1 ? '' : 's'} didn't line up with a detected setup.` : `Every one of your ${noun}s lined up with a detected setup.`}</p>` : '');
+}
+
+// ---------- edge vs random ----------
+// Seeded so the numbers don't jitter between renders.
+function mulberry(seed) { return () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function edgeStats(ts) {
+  const n = ts.length, moves = ts.map(t => t.exit / t.entry - 1), mine = ts.map((t, i) => t.side * moves[i]);
+  const avg = mine.reduce((a, b) => a + b, 0) / n, longAvg = moves.reduce((a, b) => a + b, 0) / n;
+  // Sign-flip test: same entries and exits, coin-flip direction.
+  const N = 2000, rand = mulberry(9001 + n * 31);
+  let beat = 0;
+  for (let k = 0; k < N; k++) {
+    let sum = 0; for (const m of moves) sum += rand() < .5 ? m : -m;
+    const s = sum / n;
+    if (avg > s + 1e-12) beat++; else if (Math.abs(avg - s) <= 1e-12) beat += .5;
+  }
+  return {n, win: mine.filter(x => x > 0).length / n, avg, longAvg, pnl: r2(ts.reduce((a, t) => a + t.pnl, 0)), pct: beat / N};
+}
+let edgeKey = null, callKey = null, callCache = null;
+function callStats() {
+  const cs = S.calls, c0 = cs[0], key = cs.length + '|' + (c0 ? [c0.round, c0.entryIdx].join('-') : '');
+  if (key !== callKey) { callKey = key; callCache = cs.length ? edgeStats(cs) : null; }
+  return callCache;
+}
+function renderEdge() {
+  const call = gameOf(R()) === 'call', ts = call ? S.calls : S.trades, t0 = ts[0], noun = call ? 'call' : 'trade';
+  const live = R() && !R().done;
+  const key = (call ? 'c|' : 't|') + (live ? 'live|' : '') + ts.length + '|' + (t0 ? [t0.round, t0.entryIdx, t0.exitIdx, t0.tag].join('-') : '');
+  if (key === edgeKey) return; edgeKey = key;
+  const badge = $('#edge-badge'), text = $('#edge-text'), body = $('#edge-body');
+  $('#edge-title').textContent = call ? 'Your calls by setup' : 'Your edge by setup';
+  $('#th-n').textContent = call ? 'Calls' : 'Trades'; $('#th-win').textContent = call ? 'Hit rate' : 'Win rate';
+  $('#th-avg').textContent = call ? 'Avg move' : 'Avg return'; $('#th-long').textContent = call ? 'Always up' : 'Always long';
+  $('#th-pnl').textContent = call ? '' : 'P&L';
+  $('.edge-table').hidden = live && ts.length > 0;
+  if (live && ts.length) {
+    badge.className = 'pill neutral'; badge.textContent = 'Hidden until this chart ends';
+    text.textContent = "Your setup stats stay hidden while you're on a chart so they don't sway your next decision. They'll show, along with the setups the chart actually had, when this chart ends.";
+    body.innerHTML = ''; return;
+  }
+  if (!ts.length) { badge.className = 'pill neutral'; badge.textContent = 'No ' + noun + 's yet'; text.textContent = EDGE_INTRO(noun); body.innerHTML = ''; return; }
+  const pctTxt = x => Math.round(x * 100) + '%';
+  const row = (label, st, total) => `<tr${total ? ' class="total"' : ''}><td>${label}</td><td>${st.n}</td><td>${pctTxt(st.win)}</td>` +
+    `<td class="${cls(st.avg)}">${fmtPct(st.avg)}</td><td class="${cls(st.longAvg)}">${fmtPct(st.longAvg)}</td><td class="${call ? '' : cls(st.pnl)}">${call ? '' : fmt$(st.pnl, true)}</td>` +
+    `<td class="${st.n >= 10 ? (st.pct >= .95 ? 'up' : st.pct <= .05 ? 'down' : '') : ''}">${st.n >= 5 ? pctTxt(st.pct) : '–'}</td></tr>`;
+  const autoTs = ts.filter(t => t.auto && t.rules === 2), oldTs = ts.filter(t => t.auto && t.rules !== 2), handTs = ts.filter(t => !t.auto);
+  const m5Ts = autoTs.filter(t => t.mode === 'm5'), dailyTs = ts.filter(t => (t.mode || 'daily') === 'daily');
+  const rows = TAGS.map(tg => ({tg, list: m5Ts.filter(t => (t.tag || 'none') === tg.id)}))
+    .filter(x => x.list.length)
+    .map(x => ({label: x.tg.label, st: edgeStats(x.list)})).sort((a, b) => b.st.n - a.st.n);
+  if (dailyTs.length) rows.push({label: 'Older daily charts', st: edgeStats(dailyTs)});
+  const notDaily = t => t.mode === 'm5';
+  if (oldTs.some(notDaily)) rows.push({label: 'Older setup rules', st: edgeStats(oldTs.filter(notDaily))});
+  if (handTs.some(notDaily)) rows.push({label: 'Older, tagged by hand', st: edgeStats(handTs.filter(notDaily))});
+  const all = edgeStats(ts);
+  body.innerHTML = rows.map(x => row(x.label, x.st)).join('') + row('All ' + noun + 's', all, true);
+
+  const beatPct = Math.round(all.pct * 100);
+  let b, t;
+  if (all.n < 30) {
+    b = ['neutral', 'Need more ' + noun + 's'];
+    t = `${all.n} ${noun}${all.n === 1 ? '' : 's'} so far. Right now your calls beat ${beatPct}% of coin-flip runs, but with this few ${noun}s that number swings a lot. Aim for 30 for a first read and 100 before trusting it.`;
+  } else if (all.pct >= .95) {
+    b = ['long', 'Beating random'];
+    const alw = call ? 'always calling up' : 'always being long';
+    t = `Your direction beat ${beatPct}% of coin-flip runs on the same ${noun}s, which is hard to get by luck.` +
+      (all.avg <= all.longAvg ? ` But ${alw} did as well, so the market drifting up may explain it.` : ` ${alw[0].toUpperCase() + alw.slice(1)} did worse, so it isn’t just the market drifting up.`);
+  } else if (all.pct <= .05) {
+    b = ['short', 'Worse than random'];
+    t = `Your calls did worse than ${100 - beatPct}% of coin-flip runs. Your reads point the wrong way more often than chance would, so check which setup is dragging.`;
+  } else {
+    b = ['neutral', 'Within luck'];
+    t = `A coin flip on the same entries and exits does as well as you ${100 - beatPct}% of the time, so these results can’t yet be told apart from luck.`;
+  }
+  badge.className = 'pill ' + b[0]; badge.textContent = b[1]; text.textContent = t;
+}
+
+// ---------- chart ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function niceStep(range, count) { const raw = range / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
+function sma(bars, i, n) { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += bars[k].c; return s / n; }
+let geom = null;
+
+function draw() {
+  if (!S || !S.round) return;
+  const cv = $('#chart'), wrap = cv.parentElement, W = wrap.clientWidth, H_ = wrap.clientHeight;
+  if (!W || !H_) return;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H_ * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H_ * dpr); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H_);
+  const C = {ink: css('--ink'), muted: css('--muted'), grid: css('--grid'), line: css('--line'), up: css('--up'), down: css('--down'), accent: css('--accent'), future: css('--future'), surface: css('--surface')};
+  const r = R(), bars = r.bars, last = r.idx;
+  const reviewing = r.done && r.review;
+  const axisW = 64, bottom = 24, top = 12, left = 6, blank = reviewing ? 2 : 7;
+  const plotW = W - axisW - left;
+  // Review fits every played bar plus a little history, so the whole answer key is on screen.
+  const m5 = modeOf(r) === 'm5', reviewFrom = m5 ? DAY - 12 : H(r) - 10;
+  const slots = reviewing ? r.end - reviewFrom + 1 + blank : Math.max(30, Math.min(150, Math.floor(plotW / 8)));
+  const sp = plotW / slots, first = Math.max(0, last - (slots - blank) + 1);
+  const priceH = (H_ - bottom - top) * 0.8, volTop = top + priceH + 8, volH = H_ - bottom - volTop;
+  let hi = -Infinity, lo = Infinity, vmax = 0;
+  for (let i = first; i <= last; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
+  if (r.pos) { hi = Math.max(hi, r.pos.entry); lo = Math.min(lo, r.pos.entry); }
+  const pad = (hi - lo) * (reviewing ? 0.16 : 0.06) || 1; hi += pad; lo -= pad;
+  const y = p => top + (hi - p) / (hi - lo) * priceH;
+  const x = i => left + (i - first + 0.5) * sp;
+  geom = {first, last, sp, left, plotW};
+  const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
+
+  // unseen future
+  const fx = x(last) + sp / 2;
+  ctx.fillStyle = C.future; ctx.fillRect(fx, top, left + plotW - fx, H_ - bottom - top);
+  ctx.fillStyle = C.muted; ctx.font = '600 22px "Bricolage Grotesque", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = .55; ctx.fillText('?', (fx + left + plotW) / 2, top + priceH / 2); ctx.globalAlpha = 1;
+
+  // grid + price axis
+  const stepP = niceStep(hi - lo, 6);
+  ctx.font = mono; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.lineWidth = 1;
+  for (let p = Math.ceil(lo / stepP) * stepP; p <= hi; p += stepP) {
+    const yy = Math.round(y(p)) + .5;
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(left + plotW, yy); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.fillText(p.toFixed(stepP < 1 ? 2 : 0), left + plotW + 8, yy);
+  }
+  ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(left + plotW + .5, top); ctx.lineTo(left + plotW + .5, H_ - bottom); ctx.stroke();
+
+  // round start marker + bar labels (relative to round start; clock times in 5-min mode)
+  const startI = H(r) - 1;
+  if (m5 && DAY >= first && DAY <= last) {
+    const dx = Math.round(x(DAY) - sp / 2) + .5;
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(dx, top); ctx.lineTo(dx, H_ - bottom); ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = C.muted; ctx.font = '10.5px "IBM Plex Sans", sans-serif'; ctx.textBaseline = 'top';
+    ctx.textAlign = 'right'; ctx.fillText('prev day', dx - 5, top + 2);
+    ctx.textAlign = 'left'; ctx.fillText('today', dx + 5, top + 2);
+    ctx.font = mono;
+  }
+  if (startI >= first) {
+    const sx = Math.round(x(startI)) + .5;
+    ctx.strokeStyle = C.muted; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(sx, top); ctx.lineTo(sx, H_ - bottom); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  if (m5) {
+    const mins = sp * 6 > 44 ? 30 : 60;
+    for (let i = first; i <= last; i++) { const m = 570 + (i % DAY) * 5; if ((m % mins === 0 || i % DAY === 0) && x(i) > left + 16) ctx.fillText(clock(i), x(i), H_ - bottom + 6); }
+  } else {
+    const every = sp > 10 ? 10 : 20;
+    for (let i = first; i <= last; i++) {
+      const rel = i - startI;
+      if (rel % every === 0 && x(i) > left + 12) ctx.fillText(rel === 0 ? 'start' : (rel > 0 ? '+' : '−') + Math.abs(rel), x(i), H_ - bottom + 6);
+    }
+  }
+
+  // volume
+  for (let i = first; i <= last; i++) {
+    const b = bars[i], h = b.v / vmax * volH;
+    ctx.fillStyle = b.c >= b.o ? C.up : C.down; ctx.globalAlpha = .28;
+    ctx.fillRect(x(i) - sp * .32, volTop + volH - h, sp * .64, h);
+  }
+  ctx.globalAlpha = 1;
+
+  // moving averages
+  if (S.showMA) {
+    // An average far from price would otherwise run into the volume pane.
+    ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
+    [[20, C.accent], [50, C.muted]].forEach(([n, col]) => {
+      ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); let started = false;
+      for (let i = first; i <= last; i++) { const m = sma(bars, i, n); if (m == null) continue; started ? ctx.lineTo(x(i), y(m)) : ctx.moveTo(x(i), y(m)); started = true; }
+      ctx.stroke();
+    });
+    if (m5) {
+      const vw = vwapSeries(bars);
+      ctx.strokeStyle = C.ink; ctx.globalAlpha = .55; ctx.lineWidth = 1.3; ctx.setLineDash([4, 3]); ctx.beginPath(); let st = false;
+      for (let i = Math.max(first, DAY); i <= last; i++) { st ? ctx.lineTo(x(i), y(vw[i])) : ctx.moveTo(x(i), y(vw[i])); st = true; }
+      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    ctx.lineWidth = 1;
+  }
+
+  // candles
+  const bw = Math.max(1, sp * .62);
+  for (let i = first; i <= last; i++) {
+    const b = bars[i], col = b.c >= b.o ? C.up : C.down, cx = Math.round(x(i)) + .5;
+    ctx.strokeStyle = col; ctx.fillStyle = col;
+    ctx.beginPath(); ctx.moveTo(cx, y(b.h)); ctx.lineTo(cx, y(b.l)); ctx.stroke();
+    const yt = y(Math.max(b.o, b.c)), yb = y(Math.min(b.o, b.c));
+    ctx.fillRect(cx - bw / 2, yt, bw, Math.max(1, yb - yt));
+  }
+
+  // trade markers for this chart
+  const tri = (cx, cy, upward, col) => {
+    const s = Math.max(5.5, Math.min(8, sp * .55)), d = upward ? 1 : -1;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx - s, cy + d * s * 1.5); ctx.lineTo(cx + s, cy + d * s * 1.5); ctx.closePath();
+    ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+  };
+  const exitMark = (cx, cy) => { const s = 4.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.strokeStyle = C.surface; ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; ctx.lineCap = 'butt'; };
+  const entryMark = (i, side) => { if (i < first) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up) : tri(x(i), y(b.h) - 6, false, C.down); };
+  const roundTrades = S.trades.filter(t => t.round === S.roundNo);
+  const entryBars = new Set(roundTrades.map(t => t.entryIdx).concat(r.pos ? [r.pos.entryIdx] : []));
+  roundTrades.forEach(t => {
+    entryMark(t.entryIdx, t.side);
+    // A reversal opens a new trade on the exit bar; its entry arrow already marks the exit.
+    if (t.exitIdx >= first && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
+  });
+  if (r.pos) {
+    entryMark(r.pos.entryIdx, r.pos.side);
+    const ey = Math.round(y(r.pos.entry)) + .5, col = r.pos.side > 0 ? C.up : C.down;
+    ctx.strokeStyle = col; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(left, ey); ctx.lineTo(left + plotW, ey); ctx.stroke(); ctx.setLineDash([]);
+    axisTag(ctx, r.pos.entry, ey, C.surface, col, left + plotW, axisW, true);
+  }
+
+  if (gameOf(r) === 'call') {
+    S.calls.filter(c => c.round === S.roundNo).forEach(c => {
+      entryMark(c.entryIdx, c.side);
+      if (c.exitIdx >= first && c.exitIdx <= last) {
+        ctx.beginPath(); ctx.arc(x(c.exitIdx), y(bars[c.exitIdx].c), 3.5, 0, 2 * Math.PI);
+        ctx.fillStyle = c.hit ? C.up : C.down; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+      }
+    });
+    if (!r.done && !animating) {
+      const hx0 = x(last) + sp / 2, hx1 = Math.min(x(last + CALL_N) + sp / 2, left + plotW);
+      ctx.fillStyle = C.accent; ctx.globalAlpha = .08; ctx.fillRect(hx0, top, hx1 - hx0, priceH);
+      ctx.globalAlpha = .85; ctx.font = '600 10.5px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('next ' + CALL_N, (hx0 + hx1) / 2, top + 4); ctx.globalAlpha = 1;
+    }
+  }
+
+  // last price tag
+  const lb = bars[last], ly = Math.round(y(lb.c)) + .5, lcol = lb.c >= lb.o ? C.up : C.down;
+  ctx.strokeStyle = lcol; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(x(last), ly); ctx.lineTo(left + plotW, ly); ctx.stroke(); ctx.globalAlpha = 1;
+  axisTag(ctx, lb.c, ly, lcol, '#fff', left + plotW, axisW, false);
+
+  // setup answer key, only once the chart is over
+  if (r.done && r.review && S.showStructure !== false) {
+    const {swings} = roundSetups(r);
+    ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
+    ctx.font = '600 9px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'center';
+    for (const sw of swings || []) {
+      if (sw.i < first) continue;
+      // Each swing level runs until a close breaks it.
+      let j = sw.i + 1; while (j < r.end && !(sw.hi ? bars[j].c > sw.p : bars[j].c < sw.p)) j++;
+      const ly2 = Math.round(y(sw.p)) + .5;
+      ctx.strokeStyle = C.muted; ctx.globalAlpha = .55; ctx.setLineDash([1.5, 3]);
+      ctx.beginPath(); ctx.moveTo(x(sw.i), ly2); ctx.lineTo(Math.min(x(j), left + plotW), ly2); ctx.stroke(); ctx.setLineDash([]);
+      if (sw.label) {
+        ctx.globalAlpha = .9; ctx.fillStyle = C.ink; ctx.textBaseline = sw.hi ? 'bottom' : 'top';
+        ctx.fillText(sw.label, x(sw.i), sw.hi ? y(bars[sw.i].h) - 3 : y(bars[sw.i].l) + 3);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  if (r.done && r.review && S.showSetups !== false) {
+    const {signals, boxes, levels} = roundSetups(r);
+    ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
+    for (const lv of levels || []) {
+      const ly2 = Math.round(y(lv.p)) + .5, x0 = lv.t.startsWith('P') ? left : x(DAY + 5) + sp / 2;
+      ctx.strokeStyle = C.muted; ctx.globalAlpha = .7; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(x0, ly2); ctx.lineTo(left + plotW, ly2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = C.muted; ctx.font = '600 9.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(lv.t, left + plotW - 4, ly2 - 2); ctx.globalAlpha = 1;
+    }
+    for (const bx of boxes) {
+      if (bx.i1 < first) continue;
+      const x0 = x(Math.max(bx.i0, first)) - sp / 2, x1 = x(bx.i1) + sp / 2, y0 = y(bx.hi), y1 = y(bx.lo);
+      ctx.fillStyle = C.accent; ctx.globalAlpha = .08; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.globalAlpha = .45; ctx.strokeStyle = C.accent; ctx.setLineDash([4, 3]); ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    const stack = {};
+    ctx.font = '600 9.5px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const sg of signals) {
+      if (sg.i < first) continue;
+      const b = bars[sg.i], k = sg.i + ':' + sg.dir, nth = stack[k] = (stack[k] || 0) + 1;
+      const label = codeOf(sg.type, sg.dir) + (sg.dir > 0 ? '▲' : '▼'), w = ctx.measureText(label).width + 8, h = 14;
+      const cy = sg.dir > 0 ? y(b.l) + 20 + h / 2 + (nth - 1) * (h + 2) : y(b.h) - 20 - h / 2 - (nth - 1) * (h + 2);
+      ctx.fillStyle = sg.dir > 0 ? C.up : C.down; ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x(sg.i) - w / 2, cy - h / 2, w, h, 3); else ctx.rect(x(sg.i) - w / 2, cy - h / 2, w, h);
+      ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(label, x(sg.i), cy + .5);
+    }
+    ctx.restore();
+  }
+
+  // hover crosshair
+  if (hoverI != null && hoverI >= first && hoverI <= last) {
+    ctx.strokeStyle = C.muted; ctx.globalAlpha = .6; ctx.setLineDash([3, 3]);
+    const hx = Math.round(x(hoverI)) + .5; ctx.beginPath(); ctx.moveTo(hx, top); ctx.lineTo(hx, H_ - bottom); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+  }
+  // Horizontal line follows the cursor anywhere in the price pane, with its price on the axis.
+  if (hoverY != null && hoverY >= top && hoverY <= top + priceH) {
+    const hy = Math.round(hoverY) + .5;
+    ctx.strokeStyle = C.muted; ctx.globalAlpha = .6; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(left, hy); ctx.lineTo(left + plotW, hy); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    axisTag(ctx, hi - (hoverY - top) / priceH * (hi - lo), hy, C.ink, C.surface, left + plotW, axisW, false);
+  }
+}
+function axisTag(ctx, p, yy, bg, fg, ax, axisW, outline) {
+  ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace';
+  const h = 18; ctx.fillStyle = bg; ctx.fillRect(ax + 1, yy - h / 2, axisW - 2, h);
+  if (outline) { ctx.strokeStyle = fg; ctx.strokeRect(ax + 1.5, yy - h / 2 + .5, axisW - 3, h - 1); }
+  ctx.fillStyle = fg; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(p.toFixed(2), ax + 7, yy + .5);
+}
+
+// ---------- wiring ----------
+function bind() {
+  if (bound) return; bound = true;
+  $('#btn-long').onclick = () => openPos(1);
+  $('#btn-short').onclick = () => openPos(-1);
+  $('#btn-close').onclick = () => closePos();
+  $('#btn-step').onclick = () => step(1);
+  $('#btn-skip').onclick = () => step(5);
+  $('#btn-play').onclick = () => playing ? stopPlay() : startPlay();
+  $('#speed').onchange = () => { if (playing) startPlay(); };
+  $('#btn-next-chart').onclick = nextChart;
+  $('#btn-next-chart2').onclick = nextChart;
+  $('#btn-review').onclick = () => { if (R().done) { R().review = true; commit(); } };
+  $('#btn-summary').onclick = () => { if (R().done) { R().review = false; commit(); } };
+  $('#setups-toggle').onchange = e => { S.showSetups = e.target.checked; commit(); };
+  $('#structure-toggle').onchange = e => { S.showStructure = e.target.checked; commit(); };
+  document.querySelectorAll('#game-seg button').forEach(b => b.onclick = () => setGame(b.dataset.game));
+  $('#btn-up').onclick = () => makeCall(1);
+  $('#btn-down').onclick = () => makeCall(-1);
+  $('#btn-pass').onclick = () => makeCall(0);
+  $('#btn-new').onclick = nextChart;
+  $('#ma-toggle').onchange = e => { S.showMA = e.target.checked; commit(); };
+  document.querySelectorAll('#size-seg button').forEach(b => b.onclick = () => { S.sizeIdx = +b.dataset.i; commit(); });
+
+
+  const resetWrap = $('#reset-wrap');
+  const showReset = () => { resetWrap.innerHTML = '<button class="btn ghost" id="btn-reset" type="button">Reset account</button>'; $('#btn-reset').onclick = askReset; };
+  const askReset = () => {
+    resetWrap.innerHTML = '<span>Clear all trades and calls, and go back to $10,000?</span><button class="btn short" id="btn-reset-yes" type="button">Reset</button><button class="btn" id="btn-reset-no" type="button">Keep playing</button>';
+    $('#btn-reset-yes').onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); showReset(); toast('Reset: $10,000 and no calls'); };
+    $('#btn-reset-no').onclick = showReset;
+  };
+  $('#btn-reset').onclick = askReset;
+
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = e.target.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (!S.round) return;
+    const k = e.key.toLowerCase();
+    if (gameOf(R()) === 'call') {
+      if (k === 'arrowup' || k === 'u' || k === 'b') { e.preventDefault(); makeCall(1); }
+      else if (k === 'arrowdown' || k === 'd' || k === 's') { e.preventDefault(); makeCall(-1); }
+      else if (k === 'arrowright' || k === ' ' || k === 'f') { e.preventDefault(); makeCall(0); }
+      else if (k === 'n') { if (R().done) nextChart(); }
+      return;
+    }
+    if (k === 'b') openPos(1);
+    else if (k === 's') openPos(-1);
+    else if (k === 'c') closePos();
+    else if (k === ' ' || k === 'arrowright') { e.preventDefault(); step(1); }
+    else if (k === 'f') step(5);
+    else if (k === 'p') playing ? stopPlay() : startPlay();
+    else if (k === 'n') { if (R().done) nextChart(); }
+    else return;
+  });
+
+  const cv = $('#chart');
+  const hover = e => {
+    if (!geom) return;
+    const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left;
+    const i = geom.first + Math.floor((mx - geom.left) / geom.sp);
+    const ni = (i >= geom.first && i <= geom.last) ? i : null;
+    hoverY = e.clientY - rect.top;
+    if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
+    draw();
+  };
+  const unhover = () => { hoverI = null; hoverY = null; renderOhlc(); draw(); };
+  cv.addEventListener('pointermove', hover);
+  cv.addEventListener('pointerdown', hover);
+  cv.addEventListener('pointerleave', unhover);
+  cv.addEventListener('pointercancel', unhover);
+  cv.addEventListener('pointerup', e => { if (e.pointerType !== 'mouse') unhover(); });
+
+  new ResizeObserver(() => draw()).observe(cv.parentElement);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  new MutationObserver(draw).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+}
+
+// A real-data round carries its name, scale and dates. Rounds from the first, simulated
+// version (which can arrive through a page kept open across updates) lack them.
+const realRound = r => !!(r && r.bars && r.name && r.scale && r.from != null && r.to != null);
+function start(data) {
+  S = (data && data.S) || load() || freshState();
+  S.calls = S.calls || [];
+  // One-time switch to plain candles for the price-action version.
+  if (S.paV !== 1) { S.showMA = false; S.paV = 1; }
+  bind();
+  const legacy = S.round && !realRound(S.round);
+  if (S.round && !legacy && modeOf(S.round) === 'daily') {
+    if (S.round.pos && !S.round.done) closePos(true);
+    S.round = null;
+    toast('Daily charts are retired. Your balance and history carry over.');
+  }
+  if (S.round && !legacy) { $('#loading').hidden = true; render(); }
+  S.mode = 'm5';
+  ensureData(S.mode).then(d => {
+    DATA = d;
+    if (legacy) {
+      // Settle any open simulated trade at its last price, then move to a real chart.
+      if (S.round.pos && !S.round.done) { const r = S.round, p = r.pos, pnl = r2(p.side * p.qty * (r.bars[r.idx].c - p.entry)); S.cash = r2(S.cash + pnl); S.trades.unshift({round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.qty, entry: p.entry, exit: r.bars[r.idx].c, pnl, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx}); }
+      S.round = null;
+      toast('Moved to a real chart. Your balance carries over.');
+    }
+    if (!S.round) newRound();
+    $('#loading').hidden = true; commit();
+  }).catch(e => {
+    $('#loading').textContent = 'Could not load price history (' + e.message + '). Reload the page to try again.';
+  });
+}
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (window.claude?.hot?.snapshot) window.claude.hot.snapshot(() => ({S}));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
