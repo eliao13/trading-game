@@ -166,13 +166,109 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #chart{touch-action:pan-y}
 @media (hover:none){kbd{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Phone-only pieces stay out of the desktop layout. */
+.phone-bar,.intro-close,.stats-bar,.setups-btn{display:none}
+/* A finished chart's Long/Short/Next turn grey, so they no longer look pressable. */
+.btn.long:disabled,.btn.short:disabled,.btn.primary:disabled{background:var(--future);border-color:var(--line);color:var(--muted);opacity:1}
+/* The summary's buttons stay in view while its setup list scrolls. */
+.overlay .actions{position:sticky;bottom:-22px;margin:0 -24px -22px;padding:12px 24px 22px;background:var(--surface);border-top:1px solid var(--line)}
+
+/* ---------- phone: chart on top, controls docked at the bottom, no page scroll while playing ---------- */
+@media (max-width:640px){
+  html body{padding:0;margin:0}
+  body:not(.stats-open){overflow:hidden}
+  .wrap{gap:0;max-width:none}
+  body:not(.stats-open) .wrap{height:100vh;height:100dvh}
+  .top{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 8px}
+  .brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .brand h1{font-size:22px}
+  .phone-bar{display:flex;align-items:center;gap:8px}
+  .brand p{display:none}
+  body.intro-open .brand p{display:block;margin:10px 0 0;font-size:14px;max-width:none}
+  body.intro-open .intro-close{display:flex;width:100%;margin-top:10px;min-height:44px}
+  .stats{flex-wrap:nowrap;gap:12px;justify-content:space-between}
+  .stat .label{font-size:10px}
+  .stat .v{font-size:14px}
+  .seg.game-seg button{padding:0 12px;min-height:40px;font-size:13.5px}
+  .btn.icon{width:44px;height:44px;padding:0;flex:none}
+  kbd{display:none}
+
+  .main{display:flex;flex-direction:column;align-items:stretch;gap:0;flex:1;min-height:0}
+  .chart-card{flex:1;min-height:0;border-radius:0;border-left:0;border-right:0;box-shadow:none}
+  .chart-head{padding:6px 16px;gap:4px 12px}
+  .ticker{font-size:16px}
+  .ohlc{order:5;flex:1 0 100%;min-width:0;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;font-size:11.5px;scrollbar-width:none}
+  .ohlc::-webkit-scrollbar{display:none}
+  .chart-wrap{flex:1;height:auto;min-height:160px}
+  .progress{border-radius:0}
+
+  .panel{border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 6px);gap:8px}
+  .panel .hint,.panel .group>.label,.panel #speed{display:none}
+  .panel .btn{min-height:48px;padding:0 8px}
+  .panel .pos{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 10px;padding:6px 12px}
+  .panel .pos>.label{display:none}
+  .panel .pos-side{font-size:17px}
+  .panel .pos-side{grid-column:1;grid-row:1}
+  .panel .pos-pnl{grid-column:2;grid-row:1;font-size:17px}
+  .panel .pos-sub{font-size:11.5px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #trade-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+  #trade-panel>.group{grid-column:1/-1}
+  #trade-panel>.pos+.group{grid-column:auto;justify-content:center}
+  .panel .seg{grid-template-columns:repeat(3,auto)}
+  .panel .seg button{min-height:40px;padding:0 10px}
+  .panel .row{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .panel .btn.wide{grid-column:auto}
+  #btn-close{font-size:13px;line-height:1.15;white-space:normal}
+  #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr}
+  .btn.call{min-height:56px;padding:0;font-size:16px}
+  .panel #btn-new{min-height:36px;padding:2px}
+
+  /* Chart complete: a bottom sheet, setups folded into one line. */
+  .overlay{position:fixed;z-index:20;align-items:end;justify-items:stretch;padding:0;background:color-mix(in srgb,var(--bg) 50%,transparent)}
+  .overlay .box{max-width:none;max-height:88vh;max-height:88dvh;border-radius:18px 18px 0 0;border-bottom:0;padding:18px 20px 0}
+  .overlay .actions{bottom:0;margin:0 -20px;padding:12px 20px calc(env(safe-area-inset-bottom,0px) + 12px)}
+  .overlay .actions .btn{min-height:50px}
+  .setups-btn{display:flex;justify-content:space-between;min-height:48px;font-weight:500}
+  .setups-btn[aria-expanded="true"] svg{transform:rotate(180deg)}
+  .box:not(.setups-open) #ov-setups,.box:not(.setups-open) .how{display:none}
+
+  /* Stats screen: the edge and history tables, as stacked rows. */
+  body:not(.stats-open) .log{display:none}
+  body.stats-open .main,body.stats-open .brand{display:none}
+  body.stats-open .wrap{gap:14px;padding:calc(env(safe-area-inset-top,0px) + 10px) 12px calc(env(safe-area-inset-bottom,0px) + 24px)}
+  body.stats-open .top{padding:0 4px}
+  body.stats-open .stats-bar{display:flex;align-items:center;gap:10px}
+  .stats-bar h2{font-family:var(--display);font-weight:800;font-size:24px;margin:0;flex:1}
+  .log table{min-width:0}
+  .log thead{display:none}
+  .log tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .log td{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border:0;padding:2px 0;white-space:normal}
+  .log td::before{content:attr(data-label);font:500 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .log td:first-child{grid-column:1/-1;font-family:var(--sans);font-weight:600}
+  .log td:first-child::before{content:none}
+
+  .toast{top:calc(env(safe-area-inset-top,0px) + 160px);bottom:auto}
+}
 </style>
 
 <div class="wrap">
+  <div class="stats-bar" id="stats-bar">
+    <button class="btn icon" id="btn-stats-back" type="button" aria-label="Back to the chart"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4L6 9l5 5"/></svg></button>
+    <h2>Your stats</h2>
+    <button class="btn ghost" id="btn-intro" type="button">How to play</button>
+  </div>
   <header class="top">
     <div class="brand">
-      <h1>Blind Tape</h1>
+      <div class="brand-row">
+        <h1>Blind Tape</h1>
+        <div class="phone-bar">
+          <span id="seg-slot"></span>
+          <button class="btn icon" id="btn-menu" type="button" aria-label="Stats, history and how to play"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
+        </div>
+      </div>
       <p>Read raw price action on real charts with the ticker, date and price level hidden. <b>Trade</b> it bar by bar, or <b>Call it</b>: say up or down for the next 5 bars and get scored straight away. Every chart is one real trading day on 5-min bars, from the last three months, with the session before it for context.</p>
+      <button class="btn primary intro-close" id="btn-intro-close" type="button">Got it</button>
     </div>
     <div class="stats" aria-live="polite">
       <div class="stat"><span class="label" id="st-l1">Equity</span><span class="v" id="st-eq">$10,000.00</span></div>
@@ -212,6 +308,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
               <span class="reveal-dates num" id="ov-dates"></span>
             </div>
             <dl id="ov-dl"></dl>
+            <button class="btn setups-btn" id="btn-setups" type="button" aria-expanded="false" aria-controls="ov-setups"><span id="setups-btn-label">Setups on this chart</span><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
             <div class="setups-sum" id="ov-setups"></div>
             <details class="how">
               <summary>How setups are found</summary>
@@ -569,14 +666,14 @@ function render() {
     const cs = S.calls, n = cs.length, hits = cs.filter(c => c.hit).length, st = callStats();
     let streak = 0; while (streak < n && cs[streak].hit) streak++;
     $('#st-l1').textContent = 'Calls'; $('#st-eq').textContent = n;
-    $('#st-l2').textContent = 'Hit rate'; pnlEl.textContent = n ? Math.round(hits / n * 100) + '%' : '–'; pnlEl.className = 'v';
+    $('#st-l2').textContent = 'Hit rate'; pnlEl.textContent = !n ? '–' : n < 5 ? hits + ' of ' + n : Math.round(hits / n * 100) + '%'; pnlEl.className = 'v';
     $('#st-l3').textContent = 'Beat random'; $('#st-win').textContent = st && n >= 5 ? Math.round(st.pct * 100) + '%' : '–';
     $('#st-l4').textContent = 'Streak'; $('#st-n').textContent = streak;
   } else {
     const closed = S.trades, wins = closed.filter(t => t.pnl > 0).length;
     $('#st-l1').textContent = 'Equity'; $('#st-eq').textContent = fmt$(eq);
     $('#st-l2').textContent = 'Total P&L'; pnlEl.textContent = fmt$(tot, true); pnlEl.className = 'v ' + cls(tot);
-    $('#st-l3').textContent = 'Win rate'; $('#st-win').textContent = closed.length ? Math.round(wins / closed.length * 100) + '%' : '–';
+    $('#st-l3').textContent = 'Win rate'; $('#st-win').textContent = !closed.length ? '–' : closed.length < 5 ? wins + ' of ' + closed.length : Math.round(wins / closed.length * 100) + '%';
     $('#st-l4').textContent = 'Trades'; $('#st-n').textContent = closed.length;
   }
 
@@ -626,7 +723,7 @@ function render() {
     $('#ov-label').textContent = 'Chart ' + S.roundNo + ' complete · it was';
     $('#ov-tk').textContent = r.ticker;
     $('#ov-name').textContent = r.name + ' · real price ' + fmtP(realStart) + ' → ' + fmtP(realEnd);
-    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 AM to 4:00 PM ET' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
+    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 AM to 4:00 PM ET · chart prices were rescaled to hide the level' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
     const moveDd = `<dd><span class="${cls(mv)}">${fmtPct(mv)}</span></dd>`;
     if (call) {
       const avgYour = rc.length ? rc.reduce((a, c) => a + c.side * (c.exit / c.entry - 1), 0) / rc.length : 0, upHits = rc.filter(c => c.exit > c.entry).length;
@@ -837,6 +934,9 @@ function renderSetupSummary(r) {
       `<span class="sub">${you} · ${f.length ? `${worked} of ${f.length} moved its way over the next ${fwdLabel(r)}` : 'too late in the chart to score'}</span></div>`;
   }).join('');
   const unmatched = rt.filter(t => !matched.has(t) && (t.tag || 'none') === 'none').length;
+  const nSetups = played.filter(x => MODE_TYPES[modeOf(r)].includes(x.type)).length, box = $('#overlay .box');
+  $('#setups-btn-label').textContent = nSetups ? `${nSetups} setup${nSetups === 1 ? '' : 's'} on this chart · you ${call ? 'called' : 'took'} ${matched.size}` : 'How setups are found';
+  if (box.dataset.round !== String(S.roundNo)) { box.dataset.round = S.roundNo; box.classList.remove('setups-open'); $('#btn-setups').setAttribute('aria-expanded', 'false'); }
   $('#ov-setups').innerHTML = '<span class="label">Setups on this chart · avg next ' + fwdLabel(r) + '</span>' +
     (rows || '<p class="how" style="margin:0">None of these setups showed up by these rules on this chart.</p>') +
     (rt.length ? `<p class="how" style="margin:0">${unmatched ? `${unmatched} of your ${rt.length} ${noun}${rt.length === 1 ? '' : 's'} didn't line up with a detected setup.` : `Every one of your ${noun}s lined up with a detected setup.`}</p>` : '');
@@ -1144,6 +1244,21 @@ function axisTag(ctx, p, yy, bg, fg, ax, axisW, outline) {
 // ---------- wiring ----------
 function bind() {
   if (bound) return; bound = true;
+  // Phone layout: the Trade / Call it switch sits in the top bar; stats and the intro are separate views.
+  const phone = matchMedia('(max-width: 640px)'), seg = $('#game-seg'), segHome = seg.parentElement, segNext = seg.nextElementSibling;
+  const placeSeg = () => phone.matches ? $('#seg-slot').appendChild(seg) : segHome.insertBefore(seg, segNext);
+  phone.addEventListener('change', placeSeg); placeSeg();
+  const body = document.body;
+  $('#btn-menu').onclick = () => { stopPlay(); body.classList.add('stats-open'); window.scrollTo(0, 0); };
+  $('#btn-stats-back').onclick = () => { body.classList.remove('stats-open'); draw(); };
+  $('#btn-intro').onclick = () => { body.classList.remove('stats-open'); body.classList.add('intro-open'); };
+  $('#btn-intro-close').onclick = () => body.classList.remove('intro-open');
+  $('#btn-setups').onclick = () => { const open = $('#overlay .box').classList.toggle('setups-open'); $('#btn-setups').setAttribute('aria-expanded', String(open)); };
+  // Each table cell carries its column name, shown as a label when the rows stack on a phone.
+  for (const id of ['#edge-body', '#log-body']) {
+    const tb = $(id), label = () => { const hs = [...tb.closest('table').querySelectorAll('thead th')].map(th => th.textContent); tb.querySelectorAll('tr').forEach(tr => [...tr.children].forEach((td, i) => { if (hs[i]) td.dataset.label = hs[i]; })); };
+    new MutationObserver(label).observe(tb, {childList: true}); label();
+  }
   $('#btn-long').onclick = () => openPos(1);
   $('#btn-short').onclick = () => openPos(-1);
   $('#btn-close').onclick = () => closePos();
@@ -1224,6 +1339,7 @@ function bind() {
 // version (which can arrive through a page kept open across updates) lack them.
 const realRound = r => !!(r && r.bars && r.name && r.scale && r.from != null && r.to != null);
 function start(data) {
+  if (!(data && data.S) && !load()) document.body.classList.add('intro-open');
   S = (data && data.S) || load() || freshState();
   S.calls = S.calls || [];
   // One-time switch to plain candles for the price-action version.
