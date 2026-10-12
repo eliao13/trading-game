@@ -244,7 +244,9 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .panel .row{grid-template-columns:repeat(3,minmax(0,1fr))}
   .panel .btn.wide{grid-column:auto}
   #btn-close{font-size:13px;line-height:1.15;white-space:normal}
-  #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr}
+  #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr 1fr}
+  #call-panel .row{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .btn-jump{font-size:13px;line-height:1.15;white-space:normal}
   .panel .row.trade-row{grid-template-columns:repeat(4,minmax(0,1fr))}
   .btn.call{min-height:56px;padding:0;font-size:16px}
   .panel #btn-new{min-height:36px;padding:2px}
@@ -421,10 +423,11 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <option value="320" selected>Normal</option>
             <option value="120">Fast</option>
           </select>
+          <button class="btn wide btn-jump" id="btn-jump" type="button">Skip to move <kbd>J</kbd></button>
         </div>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close.</p>
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -438,10 +441,11 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
           <div class="row">
             <button class="btn long call" id="btn-up" type="button">▲ Up <kbd>↑</kbd></button>
             <button class="btn short call" id="btn-down" type="button">▼ Down <kbd>↓</kbd></button>
-            <button class="btn wide" id="btn-pass" type="button">Pass <kbd>→</kbd></button>
+            <button class="btn" id="btn-pass" type="button">Pass <kbd>→</kbd></button>
+            <button class="btn btn-jump" id="btn-jump-call" type="button">Skip to move <kbd>J</kbd></button>
           </div>
         </div>
-        <p class="hint">Each call is scored on the close 5 bars later. Pass moves ahead 5 bars without scoring. You get a new call every 5 bars until the chart ends, then the stock is revealed.</p>
+        <p class="hint">Each call is scored on the close 5 bars later. Pass moves ahead 5 bars without scoring; Skip to move passes until a bar with at least twice the usual range shows up (or 15:00). You get a new call every 5 bars until the chart ends, then the stock is revealed.</p>
       </div>
       <button class="btn ghost" id="btn-new" type="button">Skip to a new chart</button>
     </aside>
@@ -616,6 +620,31 @@ function makeCall(dir) {
   setTimeout(tick, 70);
 }
 
+// Skip to move: reveal bars until one has at least JUMP_K x the average range of the 20 bars before it, or the
+// 15:00 bar. Only revealed bars are tested, so it never peeks ahead. Measured on the pool (2026-10-12): from a
+// midday start it skips a median 19 bars, and the 5 bars after the stop move 1.44x more than usual.
+const JUMP_K = 2, JUMP_CAP = DAY + 66;
+const jumpTrigger = (bars, i) => { let s = 0; for (let q = i - 20; q < i; q++) s += bars[q].h - bars[q].l; return s > 0 && bars[i].h - bars[i].l >= JUMP_K * s / 20; };
+const canJump = r => r && !r.done && !animating && modeOf(r) === 'm5' && r.idx < JUMP_CAP;
+function jumpToMove() {
+  const r = R(); if (!canJump(r)) return;
+  stopPlay();
+  const from = r.idx, call = gameOf(r) === 'call', stepN = call ? CALL_N : 1;
+  let hit = false;
+  // Call it moves in whole 5-bar passes; it stops after the pass that revealed the move.
+  while (r.idx < JUMP_CAP && r.idx + stepN <= r.end) {
+    const to = r.idx + stepN;
+    for (let i = r.idx + 1; i <= to; i++) if (jumpTrigger(r.bars, i)) hit = true;
+    r.idx = to;
+    if (hit) break;
+  }
+  const n = r.idx - from, at = clock(r.idx, true);
+  if (call) { r.lastCall = null; if (r.idx + CALL_N > r.end) { r.idx = r.end; r.done = true; } }
+  else if (r.idx >= r.end) { endRound(); toast('Skipped ' + n + ' bars to the close'); return; }
+  toast(hit ? 'Skipped ' + n + ' bar' + (n === 1 ? '' : 's') + ' to ' + at + ' · wide bar' : 'Nothing moved · skipped to ' + at);
+  commit();
+}
+
 // Pick a random real window, then rescale every price by one constant so the level can't give the stock away.
 function newRoundRaw() {
   if ((S.mode || 'daily') === 'm5') return newRound5m();
@@ -783,6 +812,7 @@ function render() {
   $('#btn-long').innerHTML = (p && p.side > 0 ? 'Add' : 'Long') + ' <kbd>B</kbd>';
   $('#btn-short').innerHTML = (p && p.side < 0 ? 'Add' : 'Short') + ' <kbd>S</kbd>';
   $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
+  $('#btn-jump').disabled = $('#btn-jump-call').disabled = !canJump(r);
   const ind = S.ind || {}, nInd = Object.keys(ind).filter(k => ind[k] && k !== 'vol').length;
   document.querySelectorAll('#ind-menu input').forEach(cb => { cb.checked = !!ind[cb.dataset.ind]; });
   $('#ind-count').textContent = nInd ? ' · ' + nInd : '';
@@ -1492,6 +1522,7 @@ function bind() {
   $('#btn-up').onclick = () => makeCall(1);
   $('#btn-down').onclick = () => makeCall(-1);
   $('#btn-pass').onclick = () => makeCall(0);
+  $('#btn-jump').onclick = jumpToMove; $('#btn-jump-call').onclick = jumpToMove;
   $('#btn-new').onclick = nextChart;
   document.querySelectorAll('#ind-menu input').forEach(cb => cb.onchange = () => { S.ind = Object.assign({}, S.ind, {[cb.dataset.ind]: cb.checked}); commit(); });
   // The indicators menu closes on a tap outside it or on Escape.
@@ -1523,6 +1554,7 @@ function bind() {
     if (k === 'end' && pan) { e.preventDefault(); panBy(-pan); return; }
     if (k === '+' || k === '=') { e.preventDefault(); zoomTo(zoom * 1.25, null); return; }
     if (k === '-' || k === '_') { e.preventDefault(); zoomTo(zoom / 1.25, null); return; }
+    if (k === 'j') { e.preventDefault(); jumpToMove(); return; }
     if (gameOf(R()) === 'call') {
       if (k === 'arrowup' || k === 'u' || k === 'b') { e.preventDefault(); makeCall(1); }
       else if (k === 'arrowdown' || k === 'd' || k === 's') { e.preventDefault(); makeCall(-1); }
