@@ -68,7 +68,10 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
 .toggle input{accent-color:var(--accent)}
 .chart-wrap{position:relative;height:clamp(320px,58vh,560px)}
-#chart{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+#chart{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:pan-y}
+#chart.dragging{cursor:grabbing}
+.pan-latest{position:absolute;right:72px;bottom:32px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:6px 10px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
+.pan-latest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .progress{height:4px;background:var(--future);border-radius:0 0 10px 10px;overflow:hidden}
 .progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
 
@@ -334,6 +337,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </div>
       <div class="chart-wrap">
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
+        <button class="pan-latest" id="btn-latest" type="button" hidden aria-label="Scroll to the latest bar">Latest ⟶</button>
         <div class="loading" id="loading">Loading price history…</div>
         <div class="overlay" id="overlay" hidden>
           <div class="box">
@@ -1088,7 +1092,9 @@ function renderEdge() {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function niceStep(range, count) { const raw = range / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
 function sma(bars, i, n) { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += bars[k].c; return s / n; }
-let geom = null;
+let geom = null, pan = 0, panKey = null;
+// Scroll back by n bars (negative = forward); draw() clamps it to the available history.
+function panBy(n) { pan = Math.max(0, pan + n); draw(); }
 
 function draw() {
   if (!S || !S.round) return;
@@ -1105,14 +1111,17 @@ function draw() {
   // Review fits every played bar plus a little history, so the whole answer key is on screen.
   const m5 = modeOf(r) === 'm5', reviewFrom = m5 ? DAY - 12 : H(r) - 10;
   const slots = reviewing ? r.end - reviewFrom + 1 + blank : Math.max(30, Math.min(150, Math.floor(plotW / 8)));
-  const sp = plotW / slots, first = Math.max(0, last - (slots - blank) + 1);
+  const key = S.roundNo + ':' + last + ':' + reviewing; if (key !== panKey) { panKey = key; pan = 0; }
+  pan = Math.max(0, Math.min(pan, last + blank - slots + 1));
+  const sp = plotW / slots, edge = last + blank - pan, first = Math.max(0, edge - slots + 1), vl = Math.min(last, edge);
+  const latestBtn = $('#btn-latest'); if (latestBtn.hidden !== !pan) latestBtn.hidden = !pan;
   // Panes below the price: each one takes a fifth of the height, and the price keeps at least half.
   const ind = S.ind || {}, IS = indSeries(bars, m5), lower = ['vol', 'rsi', 'macd'].filter(k => ind[k]), plotH = H_ - bottom - top;
   const priceH = lower.length ? plotH * Math.max(0.5, 1 - 0.2 * lower.length) : plotH;
   const paneH = lower.length ? (plotH - priceH) / lower.length - 8 : 0, paneTop = k => top + priceH + 8 + lower.indexOf(k) * (paneH + 8);
   const volTop = paneTop('vol'), volH = paneH;
   let hi = -Infinity, lo = Infinity, vmax = 0;
-  for (let i = first; i <= last; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
+  for (let i = first; i <= vl; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
   if (r.pos) { hi = Math.max(hi, r.pos.entry); lo = Math.min(lo, r.pos.entry); }
   // Key levels you switched on stay in view.
   const levels = (m5 && ind.pd ? [IS.pdh, IS.pdl, IS.pdc] : []).concat(m5 && ind.or && last >= IS.orFrom ? [IS.orh, IS.orl] : []);
@@ -1120,14 +1129,16 @@ function draw() {
   const pad = (hi - lo) * (reviewing ? 0.16 : 0.06) || 1; hi += pad; lo -= pad;
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
-  geom = {first, last, sp, left, plotW};
+  geom = {first, last: vl, sp, left, plotW};
   const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
 
   // unseen future
   const fx = x(last) + sp / 2;
+  if (fx < left + plotW) {
   ctx.fillStyle = C.future; ctx.fillRect(fx, top, left + plotW - fx, H_ - bottom - top);
   ctx.fillStyle = C.muted; ctx.font = '600 22px "Bricolage Grotesque", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.globalAlpha = .55; ctx.fillText('?', (fx + left + plotW) / 2, top + priceH / 2); ctx.globalAlpha = 1;
+  }
 
   // grid + price axis
   const stepP = niceStep(hi - lo, 6);
@@ -1141,7 +1152,7 @@ function draw() {
 
   // round start marker + bar labels (relative to round start; clock times in 5-min mode)
   const startI = H(r) - 1;
-  if (m5 && DAY >= first && DAY <= last) {
+  if (m5 && DAY >= first && DAY <= vl) {
     const dx = Math.round(x(DAY) - sp / 2) + .5;
     ctx.strokeStyle = C.line; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(dx, top); ctx.lineTo(dx, H_ - bottom); ctx.stroke(); ctx.lineWidth = 1;
     ctx.fillStyle = C.muted; ctx.font = '10.5px "IBM Plex Sans", sans-serif'; ctx.textBaseline = 'top';
@@ -1149,24 +1160,24 @@ function draw() {
     ctx.textAlign = 'left'; ctx.fillText('today', dx + 5, top + 2);
     ctx.font = mono;
   }
-  if (startI >= first) {
+  if (startI >= first && startI <= vl) {
     const sx = Math.round(x(startI)) + .5;
     ctx.strokeStyle = C.muted; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(sx, top); ctx.lineTo(sx, H_ - bottom); ctx.stroke(); ctx.setLineDash([]);
   }
   ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   if (m5) {
     const mins = sp * 6 > 44 ? 30 : 60;
-    for (let i = first; i <= last; i++) { const m = 570 + (i % DAY) * 5; if ((m % mins === 0 || i % DAY === 0) && x(i) > left + 16) ctx.fillText(clock(i), x(i), H_ - bottom + 6); }
+    for (let i = first; i <= vl; i++) { const m = 570 + (i % DAY) * 5; if ((m % mins === 0 || i % DAY === 0) && x(i) > left + 16) ctx.fillText(clock(i), x(i), H_ - bottom + 6); }
   } else {
     const every = sp > 10 ? 10 : 20;
-    for (let i = first; i <= last; i++) {
+    for (let i = first; i <= vl; i++) {
       const rel = i - startI;
       if (rel % every === 0 && x(i) > left + 12) ctx.fillText(rel === 0 ? 'start' : (rel > 0 ? '+' : '−') + Math.abs(rel), x(i), H_ - bottom + 6);
     }
   }
 
   // volume
-  if (ind.vol) for (let i = first; i <= last; i++) {
+  if (ind.vol) for (let i = first; i <= vl; i++) {
     const b = bars[i], h = b.v / vmax * volH;
     ctx.fillStyle = b.c >= b.o ? C.up : C.down; ctx.globalAlpha = .28;
     ctx.fillRect(x(i) - sp * .32, volTop + volH - h, sp * .64, h);
@@ -1177,7 +1188,7 @@ function draw() {
   const line = (arr, col, o = {}) => {
     ctx.strokeStyle = col; ctx.lineWidth = o.w || 1.4; ctx.globalAlpha = o.a || 1; ctx.setLineDash(o.dash || []); ctx.beginPath();
     let st = false; const yy = o.y || y;
-    for (let i = first; i <= last; i++) { const v = arr[i]; if (v == null) { st = false; continue; } st ? ctx.lineTo(x(i), yy(v)) : ctx.moveTo(x(i), yy(v)); st = true; }
+    for (let i = first; i <= vl; i++) { const v = arr[i]; if (v == null) { st = false; continue; } st ? ctx.lineTo(x(i), yy(v)) : ctx.moveTo(x(i), yy(v)); st = true; }
     ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineWidth = 1;
   };
   const level = (p, col, tag, from) => {
@@ -1188,7 +1199,7 @@ function draw() {
   // Lines on the price are clipped so one far from price never runs into the panes below.
   ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
   if (ind.bb) {
-    const pts = []; for (let i = first; i <= last; i++) if (IS.bbU[i] != null) pts.push(i);
+    const pts = []; for (let i = first; i <= vl; i++) if (IS.bbU[i] != null) pts.push(i);
     if (pts.length) {
       ctx.beginPath(); pts.forEach((i, k) => k ? ctx.lineTo(x(i), y(IS.bbU[i])) : ctx.moveTo(x(i), y(IS.bbU[i])));
       for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(x(pts[k]), y(IS.bbL[pts[k]]));
@@ -1230,17 +1241,17 @@ function draw() {
   }
   if (ind.macd) {
     const t = paneHead('macd', 'MACD 12 26 9');
-    let m = 0; for (let i = first; i <= last; i++) m = Math.max(m, Math.abs(IS.macd[i] || 0), Math.abs(IS.sig[i] || 0), Math.abs(IS.hist[i] || 0));
+    let m = 0; for (let i = first; i <= vl; i++) m = Math.max(m, Math.abs(IS.macd[i] || 0), Math.abs(IS.sig[i] || 0), Math.abs(IS.hist[i] || 0));
     m = m || 1; const ym = v => t + paneH / 2 - v / m * (paneH / 2 - 2), zy = Math.round(ym(0)) + .5;
     ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(left, zy); ctx.lineTo(left + plotW, zy); ctx.stroke();
-    for (let i = first; i <= last; i++) { const h = IS.hist[i]; if (h == null) continue; ctx.fillStyle = h >= 0 ? C.up : C.down; ctx.globalAlpha = .4; const yh = ym(h); ctx.fillRect(x(i) - sp * .3, Math.min(yh, zy), sp * .6, Math.abs(yh - zy)); }
+    for (let i = first; i <= vl; i++) { const h = IS.hist[i]; if (h == null) continue; ctx.fillStyle = h >= 0 ? C.up : C.down; ctx.globalAlpha = .4; const yh = ym(h); ctx.fillRect(x(i) - sp * .3, Math.min(yh, zy), sp * .6, Math.abs(yh - zy)); }
     ctx.globalAlpha = 1;
     line(IS.macd, C.accent, {y: ym}); line(IS.sig, C.ema9, {y: ym});
   }
 
   // candles
   const bw = Math.max(1, sp * .62);
-  for (let i = first; i <= last; i++) {
+  for (let i = first; i <= vl; i++) {
     const b = bars[i], col = b.c >= b.o ? C.up : C.down, cx = Math.round(x(i)) + .5;
     ctx.strokeStyle = col; ctx.fillStyle = col;
     ctx.beginPath(); ctx.moveTo(cx, y(b.h)); ctx.lineTo(cx, y(b.l)); ctx.stroke();
@@ -1255,13 +1266,13 @@ function draw() {
     ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
   };
   const exitMark = (cx, cy) => { const s = 4.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s); ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s); ctx.strokeStyle = C.surface; ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = C.ink; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; ctx.lineCap = 'butt'; };
-  const entryMark = (i, side) => { if (i < first) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up) : tri(x(i), y(b.h) - 6, false, C.down); };
+  const entryMark = (i, side) => { if (i < first || i > vl) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up) : tri(x(i), y(b.h) - 6, false, C.down); };
   const roundTrades = S.trades.filter(t => t.round === S.roundNo);
   const entryBars = new Set(roundTrades.map(t => t.entryIdx).concat(r.pos ? [r.pos.entryIdx] : []));
   roundTrades.forEach(t => {
     entryMark(t.entryIdx, t.side);
     // A reversal opens a new trade on the exit bar; its entry arrow already marks the exit.
-    if (t.exitIdx >= first && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
+    if (t.exitIdx >= first && t.exitIdx <= vl && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
   });
   if (r.pos) {
     entryMark(r.pos.entryIdx, r.pos.side);
@@ -1273,12 +1284,12 @@ function draw() {
   if (gameOf(r) === 'call') {
     S.calls.filter(c => c.round === S.roundNo).forEach(c => {
       entryMark(c.entryIdx, c.side);
-      if (c.exitIdx >= first && c.exitIdx <= last) {
+      if (c.exitIdx >= first && c.exitIdx <= vl) {
         ctx.beginPath(); ctx.arc(x(c.exitIdx), y(bars[c.exitIdx].c), 3.5, 0, 2 * Math.PI);
         ctx.fillStyle = c.hit ? C.up : C.down; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
       }
     });
-    if (!r.done && !animating) {
+    if (!r.done && !animating && !pan) {
       const hx0 = x(last) + sp / 2, hx1 = Math.min(x(last + CALL_N) + sp / 2, left + plotW);
       ctx.fillStyle = C.accent; ctx.globalAlpha = .08; ctx.fillRect(hx0, top, hx1 - hx0, priceH);
       ctx.globalAlpha = .85; ctx.font = '600 10.5px "IBM Plex Sans", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -1288,7 +1299,7 @@ function draw() {
 
   // last price tag
   const lb = bars[last], ly = Math.round(y(lb.c)) + .5, lcol = lb.c >= lb.o ? C.up : C.down;
-  ctx.strokeStyle = lcol; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(x(last), ly); ctx.lineTo(left + plotW, ly); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.strokeStyle = lcol; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(Math.min(x(last), left + plotW), ly); ctx.lineTo(left + plotW, ly); ctx.stroke(); ctx.globalAlpha = 1;
   axisTag(ctx, lb.c, ly, lcol, '#fff', left + plotW, axisW, false);
 
   // setup answer key, only once the chart is over
@@ -1340,7 +1351,7 @@ function draw() {
   }
 
   // hover crosshair
-  if (hoverI != null && hoverI >= first && hoverI <= last) {
+  if (hoverI != null && hoverI >= first && hoverI <= vl) {
     ctx.strokeStyle = C.muted; ctx.globalAlpha = .6; ctx.setLineDash([3, 3]);
     const hx = Math.round(x(hoverI)) + .5; ctx.beginPath(); ctx.moveTo(hx, top); ctx.lineTo(hx, H_ - bottom); ctx.stroke();
     ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -1423,6 +1434,8 @@ function bind() {
     const tag = e.target.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (!S.round) return;
     const k = e.key.toLowerCase();
+    if (k === 'arrowleft') { e.preventDefault(); panBy(e.shiftKey ? 40 : 10); return; }
+    if (k === 'end' && pan) { e.preventDefault(); panBy(-pan); return; }
     if (gameOf(R()) === 'call') {
       if (k === 'arrowup' || k === 'u' || k === 'b') { e.preventDefault(); makeCall(1); }
       else if (k === 'arrowdown' || k === 'd' || k === 's') { e.preventDefault(); makeCall(-1); }
@@ -1450,6 +1463,28 @@ function bind() {
     if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
     draw();
   };
+  // Drag left/right to scroll; a vertical swipe on a phone still scrolls the page (touch-action: pan-y).
+  let drag = null;
+  cv.addEventListener('pointerdown', e => { if (!geom || e.button !== 0) return; drag = {x: e.clientX, pan, id: e.pointerId, moved: false}; });
+  cv.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x;
+    if (!drag.moved && Math.abs(dx) < 4) return;
+    if (!drag.moved) { drag.moved = true; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); }
+    pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
+  });
+  const endDrag = () => { if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; };
+  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+  // Trackpad sideways swipe, or Shift + wheel.
+  let wheelAcc = 0;
+  cv.addEventListener('wheel', e => {
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? -e.deltaX : (e.shiftKey ? -e.deltaY : 0);
+    if (!d || !geom) return;
+    e.preventDefault(); wheelAcc += d / geom.sp;
+    const n = Math.trunc(wheelAcc); if (n) { wheelAcc -= n; panBy(n); }
+  }, {passive: false});
+  cv.addEventListener('dblclick', () => { if (pan) panBy(-pan); });
+  $('#btn-latest').onclick = () => panBy(-pan);
   const unhover = () => { hoverI = null; hoverY = null; renderOhlc(); draw(); };
   cv.addEventListener('pointermove', hover);
   cv.addEventListener('pointerdown', hover);
