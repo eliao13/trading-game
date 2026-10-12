@@ -190,6 +190,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ind-pop input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
 .ind-pop .sw{width:18px;height:3px;border-radius:2px;background:var(--c);margin-left:auto}
 .reset-top{align-self:flex-end}
+.ind-phone{display:none;flex-direction:column}
 /* Phone-only pieces stay out of the desktop layout. */
 .phone-bar,.intro-close,.stats-bar,.setups-btn{display:none}
 /* A finished chart's Long/Short/Next turn grey, so they no longer look pressable. */
@@ -278,6 +279,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .toast{top:calc(env(safe-area-inset-top,0px) + 160px);bottom:auto}
   .ind-pop{width:min(290px,calc(100vw - 32px))}
   .ind-pop label{min-height:44px}
+  .ind-phone{display:flex}
   body:not(.stats-open) .reset-top{display:none}
   body.stats-open .stats{flex-wrap:wrap}
   body.stats-open .reset-top{flex:1 0 100%;justify-content:flex-end}
@@ -334,6 +336,10 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <label><input type="checkbox" data-ind="vol"> Volume</label>
             <label><input type="checkbox" data-ind="rsi"> RSI 14</label>
             <label><input type="checkbox" data-ind="macd"> MACD 12, 26, 9</label>
+            <div class="ind-phone">
+              <span class="label">Playback</span>
+              <label><input type="checkbox" id="steady-m"> Steady pace in Play</label>
+            </div>
           </div>
         </details>
         <span class="review-ctl" id="review-ctl" hidden>
@@ -828,11 +834,11 @@ function render() {
   $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
   $('#btn-jump').disabled = $('#btn-jump-call').disabled = !canJump(r);
   const ind = S.ind || {}, nInd = Object.keys(ind).filter(k => ind[k] && k !== 'vol').length;
-  document.querySelectorAll('#ind-menu input').forEach(cb => { cb.checked = !!ind[cb.dataset.ind]; });
+  document.querySelectorAll('#ind-menu input[data-ind]').forEach(cb => { cb.checked = !!ind[cb.dataset.ind]; });
   $('#ind-count').textContent = nInd ? ' · ' + nInd : '';
   $('#setups-toggle').checked = S.showSetups !== false;
   $('#structure-toggle').checked = S.showStructure !== false;
-  $('#steady').checked = !!S.steady;
+  $('#steady').checked = $('#steady-m').checked = !!S.steady;
   if (call) {
     const lc = r.lastCall, rc = S.calls.filter(c => c.round === S.roundNo), rh = rc.filter(c => c.hit).length;
     const callsLeft = r.done ? 0 : Math.floor((r.end - r.idx) / CALL_N);
@@ -1533,14 +1539,14 @@ function bind() {
   $('#btn-summary').onclick = () => { if (R().done) { R().review = false; commit(); } };
   $('#setups-toggle').onchange = e => { S.showSetups = e.target.checked; commit(); };
   $('#structure-toggle').onchange = e => { S.showStructure = e.target.checked; commit(); };
-  $('#steady').onchange = e => { S.steady = e.target.checked; commit(); };
+  $('#steady').onchange = $('#steady-m').onchange = e => { S.steady = e.target.checked; commit(); };
   document.querySelectorAll('#game-seg button').forEach(b => b.onclick = () => setGame(b.dataset.game));
   $('#btn-up').onclick = () => makeCall(1);
   $('#btn-down').onclick = () => makeCall(-1);
   $('#btn-pass').onclick = () => makeCall(0);
   $('#btn-jump').onclick = jumpToMove; $('#btn-jump-call').onclick = jumpToMove;
   $('#btn-new').onclick = nextChart;
-  document.querySelectorAll('#ind-menu input').forEach(cb => cb.onchange = () => { S.ind = Object.assign({}, S.ind, {[cb.dataset.ind]: cb.checked}); commit(); });
+  document.querySelectorAll('#ind-menu input[data-ind]').forEach(cb => cb.onchange = () => { S.ind = Object.assign({}, S.ind, {[cb.dataset.ind]: cb.checked}); commit(); });
   // The indicators menu closes on a tap outside it or on Escape.
   document.addEventListener('click', e => { const m = $('#ind-menu'); if (m.open && !m.contains(e.target)) m.open = false; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#ind-menu').open) { $('#ind-menu').open = false; $('#ind-menu summary').focus(); } });
