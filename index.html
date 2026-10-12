@@ -167,6 +167,20 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 @media (hover:none){kbd{display:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
+/* Indicator colors: distinct in lightness as well as hue, in both themes. */
+:root{--ema9:#B35F00;--ema21:#7446D0;--bb:#5A6673}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--ema9:#F2A541;--ema21:#B591FF;--bb:#8C98A5}}
+:root[data-theme="dark"]{--ema9:#F2A541;--ema21:#B591FF;--bb:#8C98A5}
+.ind-menu{position:relative}
+.ind-menu>summary{list-style:none;cursor:pointer}
+.ind-menu>summary::-webkit-details-marker{display:none}
+.ind-count{color:var(--accent);font-family:var(--mono)}
+.ind-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:270px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px 14px 10px;display:flex;flex-direction:column}
+.ind-pop .label{padding:8px 0 2px}
+.ind-pop label{display:flex;align-items:center;gap:10px;min-height:36px;font-size:14px;cursor:pointer}
+.ind-pop input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.ind-pop .sw{width:18px;height:3px;border-radius:2px;background:var(--c);margin-left:auto}
+.reset-top{align-self:flex-end}
 /* Phone-only pieces stay out of the desktop layout. */
 .phone-bar,.intro-close,.stats-bar,.setups-btn{display:none}
 /* A finished chart's Long/Short/Next turn grey, so they no longer look pressable. */
@@ -249,6 +263,11 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .log td:first-child::before{content:none}
 
   .toast{top:calc(env(safe-area-inset-top,0px) + 160px);bottom:auto}
+  .ind-pop{width:min(290px,calc(100vw - 32px))}
+  .ind-pop label{min-height:44px}
+  body:not(.stats-open) .reset-top{display:none}
+  body.stats-open .stats{flex-wrap:wrap}
+  body.stats-open .reset-top{flex:1 0 100%;justify-content:flex-end}
 }
 </style>
 
@@ -275,6 +294,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       <div class="stat"><span class="label" id="st-l2">Total P&amp;L</span><span class="v" id="st-pnl">$0.00</span></div>
       <div class="stat"><span class="label" id="st-l3">Win rate</span><span class="v" id="st-win">–</span></div>
       <div class="stat"><span class="label" id="st-l4">Trades</span><span class="v" id="st-n">0</span></div>
+      <div class="confirm reset-top" id="reset-top"></div>
     </div>
   </header>
 
@@ -285,7 +305,24 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <span class="tag" id="round-tag">Chart 1</span>
         <span class="ohlc num" id="ohlc"></span>
         <span class="spacer"></span>
-        <label class="toggle"><input type="checkbox" id="ma-toggle"> <span id="ma-label">MA 20 / 50</span></label>
+        <details class="ind-menu" id="ind-menu">
+          <summary class="btn small">Indicators<span class="ind-count" id="ind-count"></span></summary>
+          <div class="ind-pop" role="group" aria-label="Indicators">
+            <span class="label">On the price</span>
+            <label><input type="checkbox" data-ind="sma20"> SMA 20 <i class="sw" style="--c:var(--accent)"></i></label>
+            <label><input type="checkbox" data-ind="sma50"> SMA 50 <i class="sw" style="--c:var(--muted)"></i></label>
+            <label><input type="checkbox" data-ind="ema9"> EMA 9 <i class="sw" style="--c:var(--ema9)"></i></label>
+            <label><input type="checkbox" data-ind="ema21"> EMA 21 <i class="sw" style="--c:var(--ema21)"></i></label>
+            <label><input type="checkbox" data-ind="vwap"> VWAP <i class="sw" style="--c:var(--ink)"></i></label>
+            <label><input type="checkbox" data-ind="bb"> Bollinger Bands 20, 2 <i class="sw" style="--c:var(--bb)"></i></label>
+            <label><input type="checkbox" data-ind="pd"> Prior-day high / low / close <i class="sw" style="--c:var(--ink)"></i></label>
+            <label><input type="checkbox" data-ind="or"> Opening range, first 30 min <i class="sw" style="--c:var(--accent)"></i></label>
+            <span class="label">Below the chart</span>
+            <label><input type="checkbox" data-ind="vol"> Volume</label>
+            <label><input type="checkbox" data-ind="rsi"> RSI 14</label>
+            <label><input type="checkbox" data-ind="macd"> MACD 12, 26, 9</label>
+          </div>
+        </details>
         <span class="review-ctl" id="review-ctl" hidden>
           <label class="toggle"><input type="checkbox" id="setups-toggle" checked> Setups</label>
           <label class="toggle"><input type="checkbox" id="structure-toggle" checked> Structure</label>
@@ -469,7 +506,7 @@ const r2 = x => Math.round(x * 100) / 100;
 
 const fmtDate = day => new Date(day * 864e5).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC'});
 
-function freshState() { return {cash: START_CASH, trades: [], calls: [], roundNo: 0, sizeIdx: 1, showMA: false, round: null, recent: [], showSetups: true, showStructure: true, mode: 'm5', game: 'trade', paV: 1}; }
+function freshState() { return {cash: START_CASH, trades: [], calls: [], roundNo: 0, sizeIdx: 1, showMA: false, ind: {vol: true}, round: null, recent: [], showSetups: true, showStructure: true, mode: 'm5', game: 'trade', paV: 1}; }
 function load() { try { const j = localStorage.getItem(KEY); if (j) { const s = JSON.parse(j); if (s && s.round && s.round.bars) return s; } } catch (e) {} return null; }
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
 
@@ -681,7 +718,6 @@ function render() {
   $('#btn-new').disabled = !DATA; $('#btn-next-chart').disabled = !DATA;
   const m5 = modeOf(r) === 'm5';
   $('#round-tag').textContent = 'Chart ' + S.roundNo;
-  $('#ma-label').textContent = m5 ? 'MA 20 / 50 · VWAP' : 'MA 20 / 50';
   const played = r.idx - (H(r) - 1);
   $('#prog').style.width = (played / FW(r) * 100) + '%';
 
@@ -696,7 +732,9 @@ function render() {
   $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
   $('#btn-close').disabled = r.done || !p;
   $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
-  $('#ma-toggle').checked = S.showMA;
+  const ind = S.ind || {}, nInd = Object.keys(ind).filter(k => ind[k] && k !== 'vol').length;
+  document.querySelectorAll('#ind-menu input').forEach(cb => { cb.checked = !!ind[cb.dataset.ind]; });
+  $('#ind-count').textContent = nInd ? ' · ' + nInd : '';
   $('#setups-toggle').checked = S.showSetups !== false;
   $('#structure-toggle').checked = S.showStructure !== false;
   if (call) {
@@ -818,6 +856,35 @@ function indicators(bars) {
     s20[i] = sma(bars, i, 20); s50[i] = sma(bars, i, 50);
   }
   return {atr, s20, s50};
+}
+function emaSeries(vals, n) {
+  const k = 2 / (n + 1), out = []; let e = null;
+  vals.forEach((v, i) => { e = e == null ? v : v * k + e * (1 - k); out[i] = i >= n - 1 ? e : null; });
+  return out;
+}
+// Every chart indicator, computed so the value at bar i depends only on bars 0..i: nothing leaks from the hidden bars.
+function indSeries(bars, m5) {
+  const c = bars.map(b => b.c), n = bars.length;
+  const s = {sma20: bars.map((b, i) => sma(bars, i, 20)), sma50: bars.map((b, i) => sma(bars, i, 50)), ema9: emaSeries(c, 9), ema21: emaSeries(c, 21), bbU: [], bbL: [], rsi: [], sig: [], hist: []};
+  for (let i = 19; i < n; i++) { const m = s.sma20[i]; let v = 0; for (let k = i - 19; k <= i; k++) v += (c[k] - m) ** 2; const sd = Math.sqrt(v / 20); s.bbU[i] = m + 2 * sd; s.bbL[i] = m - 2 * sd; }
+  let ag = 0, al = 0; // RSI 14 with Wilder smoothing
+  for (let i = 1; i < n; i++) {
+    const d = c[i] - c[i - 1], g = Math.max(d, 0), l = Math.max(-d, 0);
+    if (i <= 14) { ag += g / 14; al += l / 14; } else { ag = (ag * 13 + g) / 14; al = (al * 13 + l) / 14; }
+    if (i >= 14) s.rsi[i] = al ? 100 - 100 / (1 + ag / al) : 100;
+  }
+  const e12 = emaSeries(c, 12), e26 = emaSeries(c, 26);
+  s.macd = c.map((_, i) => e12[i] != null && e26[i] != null ? e12[i] - e26[i] : null);
+  const m0 = s.macd.findIndex(v => v != null);
+  if (m0 >= 0) emaSeries(s.macd.slice(m0), 9).forEach((v, j) => { s.sig[m0 + j] = v; s.hist[m0 + j] = v == null ? null : s.macd[m0 + j] - v; });
+  if (m5) {
+    s.vwap = vwapSeries(bars);
+    const pd = bars.slice(0, DAY), or = bars.slice(DAY, DAY + 6);
+    s.pdh = Math.max(...pd.map(b => b.h)); s.pdl = Math.min(...pd.map(b => b.l)); s.pdc = pd[DAY - 1].c;
+    // The opening range is complete at the 10:00 bar's close, the first bar it may be drawn on.
+    s.orh = Math.max(...or.map(b => b.h)); s.orl = Math.min(...or.map(b => b.l)); s.orFrom = DAY + 5;
+  }
+  return s;
 }
 function vwapSeries(bars) {
   const v = []; let pv = 0, vv = 0;
@@ -1030,7 +1097,7 @@ function draw() {
   const dpr = window.devicePixelRatio || 1;
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H_ * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H_ * dpr); }
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H_);
-  const C = {ink: css('--ink'), muted: css('--muted'), grid: css('--grid'), line: css('--line'), up: css('--up'), down: css('--down'), accent: css('--accent'), future: css('--future'), surface: css('--surface')};
+  const C = {ema9: css('--ema9'), ema21: css('--ema21'), bb: css('--bb'), ink: css('--ink'), muted: css('--muted'), grid: css('--grid'), line: css('--line'), up: css('--up'), down: css('--down'), accent: css('--accent'), future: css('--future'), surface: css('--surface')};
   const r = R(), bars = r.bars, last = r.idx;
   const reviewing = r.done && r.review;
   const axisW = 64, bottom = 24, top = 12, left = 6, blank = reviewing ? 2 : 7;
@@ -1039,10 +1106,17 @@ function draw() {
   const m5 = modeOf(r) === 'm5', reviewFrom = m5 ? DAY - 12 : H(r) - 10;
   const slots = reviewing ? r.end - reviewFrom + 1 + blank : Math.max(30, Math.min(150, Math.floor(plotW / 8)));
   const sp = plotW / slots, first = Math.max(0, last - (slots - blank) + 1);
-  const priceH = (H_ - bottom - top) * 0.8, volTop = top + priceH + 8, volH = H_ - bottom - volTop;
+  // Panes below the price: each one takes a fifth of the height, and the price keeps at least half.
+  const ind = S.ind || {}, IS = indSeries(bars, m5), lower = ['vol', 'rsi', 'macd'].filter(k => ind[k]), plotH = H_ - bottom - top;
+  const priceH = lower.length ? plotH * Math.max(0.5, 1 - 0.2 * lower.length) : plotH;
+  const paneH = lower.length ? (plotH - priceH) / lower.length - 8 : 0, paneTop = k => top + priceH + 8 + lower.indexOf(k) * (paneH + 8);
+  const volTop = paneTop('vol'), volH = paneH;
   let hi = -Infinity, lo = Infinity, vmax = 0;
   for (let i = first; i <= last; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
   if (r.pos) { hi = Math.max(hi, r.pos.entry); lo = Math.min(lo, r.pos.entry); }
+  // Key levels you switched on stay in view.
+  const levels = (m5 && ind.pd ? [IS.pdh, IS.pdl, IS.pdc] : []).concat(m5 && ind.or && last >= IS.orFrom ? [IS.orh, IS.orl] : []);
+  levels.forEach(p => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
   const pad = (hi - lo) * (reviewing ? 0.16 : 0.06) || 1; hi += pad; lo -= pad;
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
@@ -1092,30 +1166,76 @@ function draw() {
   }
 
   // volume
-  for (let i = first; i <= last; i++) {
+  if (ind.vol) for (let i = first; i <= last; i++) {
     const b = bars[i], h = b.v / vmax * volH;
     ctx.fillStyle = b.c >= b.o ? C.up : C.down; ctx.globalAlpha = .28;
     ctx.fillRect(x(i) - sp * .32, volTop + volH - h, sp * .64, h);
   }
   ctx.globalAlpha = 1;
 
-  // moving averages
-  if (S.showMA) {
-    // An average far from price would otherwise run into the volume pane.
-    ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
-    [[20, C.accent], [50, C.muted]].forEach(([n, col]) => {
-      ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); let started = false;
-      for (let i = first; i <= last; i++) { const m = sma(bars, i, n); if (m == null) continue; started ? ctx.lineTo(x(i), y(m)) : ctx.moveTo(x(i), y(m)); started = true; }
-      ctx.stroke();
-    });
-    if (m5) {
-      const vw = vwapSeries(bars);
-      ctx.strokeStyle = C.ink; ctx.globalAlpha = .55; ctx.lineWidth = 1.3; ctx.setLineDash([4, 3]); ctx.beginPath(); let st = false;
-      for (let i = Math.max(first, DAY); i <= last; i++) { st ? ctx.lineTo(x(i), y(vw[i])) : ctx.moveTo(x(i), y(vw[i])); st = true; }
-      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  // indicators
+  const line = (arr, col, o = {}) => {
+    ctx.strokeStyle = col; ctx.lineWidth = o.w || 1.4; ctx.globalAlpha = o.a || 1; ctx.setLineDash(o.dash || []); ctx.beginPath();
+    let st = false; const yy = o.y || y;
+    for (let i = first; i <= last; i++) { const v = arr[i]; if (v == null) { st = false; continue; } st ? ctx.lineTo(x(i), yy(v)) : ctx.moveTo(x(i), yy(v)); st = true; }
+    ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+  };
+  const level = (p, col, tag, from) => {
+    const yy = Math.round(y(p)) + .5, x0 = Math.max(left, x(from) - sp / 2);
+    ctx.strokeStyle = col; ctx.globalAlpha = .75; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(left + plotW, yy); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = col; ctx.font = '600 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(tag, left + plotW - 4, yy - 2); ctx.globalAlpha = 1;
+  };
+  // Lines on the price are clipped so one far from price never runs into the panes below.
+  ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
+  if (ind.bb) {
+    const pts = []; for (let i = first; i <= last; i++) if (IS.bbU[i] != null) pts.push(i);
+    if (pts.length) {
+      ctx.beginPath(); pts.forEach((i, k) => k ? ctx.lineTo(x(i), y(IS.bbU[i])) : ctx.moveTo(x(i), y(IS.bbU[i])));
+      for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(x(pts[k]), y(IS.bbL[pts[k]]));
+      ctx.closePath(); ctx.fillStyle = C.bb; ctx.globalAlpha = .08; ctx.fill(); ctx.globalAlpha = 1;
     }
-    ctx.restore();
-    ctx.lineWidth = 1;
+    line(IS.bbU, C.bb, {w: 1, a: .7}); line(IS.bbL, C.bb, {w: 1, a: .7});
+  }
+  if (ind.sma20) line(IS.sma20, C.accent);
+  if (ind.sma50) line(IS.sma50, C.muted);
+  if (ind.ema9) line(IS.ema9, C.ema9);
+  if (ind.ema21) line(IS.ema21, C.ema21);
+  if (m5 && ind.vwap) line(IS.vwap, C.ink, {a: .6, w: 1.3, dash: [4, 3]});
+  if (m5 && ind.pd) { level(IS.pdh, C.ink, 'PDH', DAY); level(IS.pdl, C.ink, 'PDL', DAY); level(IS.pdc, C.ink, 'PDC', DAY); }
+  if (m5 && ind.or && last >= IS.orFrom) { level(IS.orh, C.accent, 'ORH', DAY); level(IS.orl, C.accent, 'ORL', DAY); }
+  ctx.restore();
+  // A small legend names the lines that are on.
+  ctx.font = '600 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  let lx = left + 4;
+  [['sma20', 'SMA20', C.accent], ['sma50', 'SMA50', C.muted], ['ema9', 'EMA9', C.ema9], ['ema21', 'EMA21', C.ema21], ['vwap', 'VWAP', C.ink], ['bb', 'BB 20,2', C.bb]].forEach(([k, t, col]) => {
+    if (!ind[k] || (k === 'vwap' && !m5)) return;
+    ctx.fillStyle = col; ctx.fillText(t, lx, top + 2); lx += ctx.measureText(t).width + 8;
+  });
+  // RSI and MACD panes
+  const paneHead = (k, label) => {
+    const t = paneTop(k);
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(left, Math.round(t - 4) + .5); ctx.lineTo(left + plotW, Math.round(t - 4) + .5); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.font = '10px "IBM Plex Mono", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(label, left + 4, t);
+    return t;
+  };
+  if (ind.rsi) {
+    const v = IS.rsi[hoverI != null ? hoverI : last], t = paneHead('rsi', 'RSI 14' + (v != null ? '  ' + v.toFixed(0) : '')), yr = p => t + (100 - p) / 100 * paneH;
+    ctx.font = mono; ctx.textBaseline = 'middle';
+    [30, 70].forEach(g => {
+      const gy = Math.round(yr(g)) + .5;
+      ctx.strokeStyle = C.muted; ctx.globalAlpha = .5; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(left, gy); ctx.lineTo(left + plotW, gy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      ctx.fillStyle = C.muted; ctx.fillText(String(g), left + plotW + 8, gy);
+    });
+    line(IS.rsi, C.accent, {y: yr});
+  }
+  if (ind.macd) {
+    const t = paneHead('macd', 'MACD 12 26 9');
+    let m = 0; for (let i = first; i <= last; i++) m = Math.max(m, Math.abs(IS.macd[i] || 0), Math.abs(IS.sig[i] || 0), Math.abs(IS.hist[i] || 0));
+    m = m || 1; const ym = v => t + paneH / 2 - v / m * (paneH / 2 - 2), zy = Math.round(ym(0)) + .5;
+    ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(left, zy); ctx.lineTo(left + plotW, zy); ctx.stroke();
+    for (let i = first; i <= last; i++) { const h = IS.hist[i]; if (h == null) continue; ctx.fillStyle = h >= 0 ? C.up : C.down; ctx.globalAlpha = .4; const yh = ym(h); ctx.fillRect(x(i) - sp * .3, Math.min(yh, zy), sp * .6, Math.abs(yh - zy)); }
+    ctx.globalAlpha = 1;
+    line(IS.macd, C.accent, {y: ym}); line(IS.sig, C.ema9, {y: ym});
   }
 
   // candles
@@ -1277,18 +1397,26 @@ function bind() {
   $('#btn-down').onclick = () => makeCall(-1);
   $('#btn-pass').onclick = () => makeCall(0);
   $('#btn-new').onclick = nextChart;
-  $('#ma-toggle').onchange = e => { S.showMA = e.target.checked; commit(); };
+  document.querySelectorAll('#ind-menu input').forEach(cb => cb.onchange = () => { S.ind = Object.assign({}, S.ind, {[cb.dataset.ind]: cb.checked}); commit(); });
+  // The indicators menu closes on a tap outside it or on Escape.
+  document.addEventListener('click', e => { const m = $('#ind-menu'); if (m.open && !m.contains(e.target)) m.open = false; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#ind-menu').open) { $('#ind-menu').open = false; $('#ind-menu summary').focus(); } });
   document.querySelectorAll('#size-seg button').forEach(b => b.onclick = () => { S.sizeIdx = +b.dataset.i; commit(); });
 
 
-  const resetWrap = $('#reset-wrap');
-  const showReset = () => { resetWrap.innerHTML = '<button class="btn ghost" id="btn-reset" type="button">Reset account</button>'; $('#btn-reset').onclick = askReset; };
-  const askReset = () => {
-    resetWrap.innerHTML = '<span>Clear all trades and calls, and go back to $10,000?</span><button class="btn short" id="btn-reset-yes" type="button">Reset</button><button class="btn" id="btn-reset-no" type="button">Keep playing</button>';
-    $('#btn-reset-yes').onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); showReset(); toast('Reset: $10,000 and no calls'); };
-    $('#btn-reset-no').onclick = showReset;
+  // Reset account sits in the stats row and under the trade history; both ask before clearing.
+  const resetUI = wrap => {
+    const show = () => { wrap.innerHTML = '<button class="btn ghost" type="button">Reset account</button>'; wrap.firstChild.onclick = ask; };
+    const ask = () => {
+      wrap.innerHTML = '<span>Back to $10,000 and clear all trades, calls and win/loss?</span><button class="btn short" type="button">Reset</button><button class="btn" type="button">Keep playing</button>';
+      const [yes, no] = wrap.querySelectorAll('button');
+      yes.onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game, ind: S.ind}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); resetShows.forEach(f => f()); toast('Reset: $10,000, no trades or calls'); };
+      no.onclick = show; no.focus();
+    };
+    return show;
   };
-  $('#btn-reset').onclick = askReset;
+  const resetShows = ['#reset-wrap', '#reset-top'].map(s => resetUI($(s)));
+  resetShows.forEach(f => f());
 
   document.addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1344,6 +1472,8 @@ function start(data) {
   S.calls = S.calls || [];
   // One-time switch to plain candles for the price-action version.
   if (S.paV !== 1) { S.showMA = false; S.paV = 1; }
+  // The old single "MA 20 / 50 · VWAP" switch becomes three separate indicators.
+  if (!S.ind) S.ind = Object.assign({vol: true}, S.showMA ? {sma20: true, sma50: true, vwap: true} : {});
   bind();
   const legacy = S.round && !realRound(S.round);
   if (S.round && !legacy && modeOf(S.round) === 'daily') {
