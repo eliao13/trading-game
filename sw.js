@@ -1,4 +1,4 @@
-const VERSION = 'bt-d765114c73';
+const VERSION = 'bt-8c43875f56';
 // The data files are in the install list too: on the first visit the page fetches them before
 // this worker is in control, so without this the app would not work offline until a second visit.
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json', 'tape-5m-5.json', 'tape-5m-6.json'];

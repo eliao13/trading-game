@@ -427,7 +427,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         </div>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along.</p>
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -761,12 +761,25 @@ function nextChart() {
   if (!r.done && r.pos) closePos(true);
   stopPlay(); newRound(); hoverI = null; hoverY = null; commit();
 }
+// Autoplay paces itself: each bar stays on screen for the chosen speed times (its size / the previous session's
+// average bar range)^1.5, kept between 0.25x and 2x, so quiet stretches fly by and big bars linger. The larger of
+// the last two bars counts, so a big bar slows the next one too. Measured on the pool (tools/measure-pace.cjs):
+// a median midday bar is 0.65x the previous session's average, a median 10:00-11:30 bar 1.1x.
+function paceDelay() {
+  const r = R(), base = +$('#speed').value;
+  if (modeOf(r) !== 'm5' || r.idx < DAY + 1) return base;
+  let s = 0; for (let i = 0; i < DAY; i++) s += r.bars[i].h - r.bars[i].l;
+  const rng = i => r.bars[i].h - r.bars[i].l, rho = Math.max(rng(r.idx), rng(r.idx - 1)) / (s / DAY || 1);
+  return Math.round(base * Math.min(2, Math.max(0.25, rho ** 1.5)));
+}
 function startPlay() {
   if (!R() || R().done) return;
   playing = true; $('#btn-play').innerHTML = 'Pause <kbd>P</kbd>';
-  clearInterval(timer); timer = setInterval(() => step(1), +$('#speed').value);
+  clearTimeout(timer);
+  const tick = () => { if (!playing) return; step(1); if (playing) timer = setTimeout(tick, paceDelay()); };
+  timer = setTimeout(tick, paceDelay());
 }
-function stopPlay() { playing = false; clearInterval(timer); $('#btn-play').innerHTML = 'Play <kbd>P</kbd>'; }
+function stopPlay() { playing = false; clearTimeout(timer); $('#btn-play').innerHTML = 'Play <kbd>P</kbd>'; }
 
 function commit() { save(); render(); }
 
