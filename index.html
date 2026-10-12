@@ -70,6 +70,11 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .chart-wrap{position:relative;height:clamp(320px,58vh,560px)}
 #chart{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:pan-y}
 #chart.dragging{cursor:grabbing}
+/* A manual price scale takes vertical swipes on the chart; on auto they scroll the page. */
+#chart.vscale{touch-action:none}
+/* On touch screens a strip over the price axis takes vertical drags, so they squash the scale instead of scrolling. */
+.axis-grab{position:absolute;right:0;width:64px;display:none;touch-action:none;cursor:ns-resize}
+@media (any-pointer:coarse){.axis-grab{display:block}}
 .pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
 .pan-latest{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
 .pan-latest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -340,6 +345,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </div>
       <div class="chart-wrap">
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
+        <div class="axis-grab" id="axis-grab" aria-hidden="true"></div>
         <div class="pan-btns">
           <button class="pan-latest" id="btn-auto" type="button" hidden aria-label="Fit the price scale to the bars again">Auto</button>
           <button class="pan-latest" id="btn-zoom-reset" type="button" hidden aria-label="Reset the chart zoom">Reset zoom</button>
@@ -1186,6 +1192,8 @@ function draw() {
   const vk = S.roundNo + ':' + reviewing; if (vk !== vsKey) { vsKey = vk; vs = null; }
   if (vs) { hi = vs.hi; lo = vs.lo; }
   const autoBtn = $('#btn-auto'); if (autoBtn.hidden !== !vs) autoBtn.hidden = !vs;
+  if (cv.classList.contains('vscale') !== !!vs) cv.classList.toggle('vscale', !!vs);
+  const ag = $('#axis-grab'), agTop = top + 'px', agH = priceH + 'px'; if (ag.style.top !== agTop || ag.style.height !== agH) { ag.style.top = agTop; ag.style.height = agH; }
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
   geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo};
@@ -1547,11 +1555,12 @@ function bind() {
   };
   // Drag left/right to scroll. Drag the price axis up/down to squash or stretch the price scale; once it is
   // off auto, an up/down drag on the chart pans the price. Each drag locks to the direction it starts in.
-  // Off phones a vertical touch swipe still scrolls the page (touch-action: pan-y); phones use none.
+  // Touch: on an auto scale a vertical swipe on the chart scrolls the page (touch-action: pan-y); once the scale is
+  // manual the chart takes it (.vscale), and the #axis-grab strip always takes it. Phones never scroll the page.
   // Two fingers down = pinch; it ends the one-finger drag, which only restarts on a fresh touch.
   let drag = null, pinch = null; const touches = new Map();
   const spread = () => { const [a, b] = [...touches.values()]; return {d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2}; };
-  cv.addEventListener('pointerdown', e => {
+  const onDown = e => {
     if (!geom || e.button !== 0) return;
     touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
     if (touches.size === 2) { const p = spread(); pinch = {d0: Math.max(p.d, 1), zoom0: zoom}; if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; return; }
@@ -1560,8 +1569,8 @@ function bind() {
       const onAxis = mx > g.left + g.plotW && my >= g.top && my <= g.top + g.priceH;
       drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onAxis ? 'scale' : null, hi: g.hi, lo: g.lo};
     }
-  });
-  cv.addEventListener('pointermove', e => {
+  };
+  const onMove = e => {
     if (touches.has(e.pointerId)) touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
     if (pinch && touches.size === 2) {
       const p = spread(), rect = cv.getBoundingClientRect();
@@ -1584,9 +1593,13 @@ function bind() {
     }
     if (drag.dir === 'v') { const d = dy / geom.priceH * (drag.hi - drag.lo); vs = {hi: drag.hi + d, lo: drag.lo + d}; draw(); return; }
     pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
-  });
+  };
   const endDrag = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; };
-  cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', endDrag);
+  // The axis strip shares the chart's handlers; a drag that starts there is captured by the chart.
+  for (const el of [cv, $('#axis-grab')]) {
+    el.addEventListener('pointerdown', onDown); el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', endDrag); el.addEventListener('pointercancel', endDrag);
+  }
   // Trackpad sideways swipe, or Shift + wheel.
   let wheelAcc = 0;
   cv.addEventListener('wheel', e => {
