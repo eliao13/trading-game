@@ -464,7 +464,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 const START_CASH = 10000, HIST = 90, FWD = 80, SIZES = [0.25, 0.5, 1];
 // 5-min rounds: previous session (78 bars) + first 30 minutes of today as history, then trade to the close.
 const DAY = 78, M5_HIST = DAY + 6;
-const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json']}};
+const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json', 'tape-5m-5.json', 'tape-5m-6.json']}};
 const MODE_TYPES = {daily: ['bos', 'failed', 'retest', 'hl', 'inside', 'range'], m5: ['orb', 'pdhl', 'bos', 'failed', 'retest', 'hl', 'inside', 'range']};
 const CALL_N = 5;
 const gameOf = r => (r && r.game) || 'trade';
