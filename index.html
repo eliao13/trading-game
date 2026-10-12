@@ -580,9 +580,12 @@ async function setMode(mode) {
 function newRound() { newRoundRaw(); S.round.game = S.game || 'trade'; }
 function setGame(g) {
   if ((S.game || 'trade') === g || !DATA || animating) return;
+  const r = R();
+  if (r && !r.done && r.pos) { toast('Close your position first'); return; }
   stopPlay();
-  const r = R(); if (r && !r.done && r.pos) closePos(true);
-  S.game = g; newRound(); hoverI = null; hoverY = null; edgeKey = null; commit();
+  S.game = g;
+  if (!r || r.done) { newRound(); hoverI = null; hoverY = null; } else r.game = g;
+  edgeKey = null; commit();
   toast(g === 'call' ? 'Call it: up or down for the next 5 bars' : 'Trade mode');
 }
 // Record a call (dir 1 up, -1 down) or a pass (0), then reveal the next CALL_N bars.
@@ -1345,14 +1348,14 @@ function draw() {
     axisTag(ctx, r.pos.entry, ey, C.surface, col, left + plotW, axisW, true);
   }
 
-  if (gameOf(r) === 'call') {
-    S.calls.filter(c => c.round === S.roundNo).forEach(c => {
+  S.calls.filter(c => c.round === S.roundNo).forEach(c => {
       entryMark(c.entryIdx, c.side);
       if (c.exitIdx >= first && c.exitIdx <= vl) {
         ctx.beginPath(); ctx.arc(x(c.exitIdx), y(bars[c.exitIdx].c), 3.5, 0, 2 * Math.PI);
         ctx.fillStyle = c.hit ? C.up : C.down; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
       }
     });
+  if (gameOf(r) === 'call') {
     if (!r.done && !animating && !pan) {
       const hx0 = x(last) + sp / 2, hx1 = Math.min(x(last + CALL_N) + sp / 2, left + plotW);
       ctx.fillStyle = C.accent; ctx.globalAlpha = .08; ctx.fillRect(hx0, top, hx1 - hx0, priceH);
