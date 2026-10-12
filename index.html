@@ -219,6 +219,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .ohlc{order:5;flex:1 0 100%;min-width:0;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;font-size:11.5px;scrollbar-width:none}
   .ohlc::-webkit-scrollbar{display:none}
   .chart-wrap{flex:1;height:auto;min-height:160px}
+  .chart-wrap #chart{touch-action:none}
   .progress{border-radius:0}
 
   .panel{border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 6px);gap:8px}
@@ -340,6 +341,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       <div class="chart-wrap">
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
         <div class="pan-btns">
+          <button class="pan-latest" id="btn-auto" type="button" hidden aria-label="Fit the price scale to the bars again">Auto</button>
           <button class="pan-latest" id="btn-zoom-reset" type="button" hidden aria-label="Reset the chart zoom">Reset zoom</button>
           <button class="pan-latest" id="btn-latest" type="button" hidden aria-label="Scroll to the latest bar">Latest ⟶</button>
         </div>
@@ -1132,6 +1134,8 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 function niceStep(range, count) { const raw = range / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
 function sma(bars, i, n) { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += bars[k].c; return s / n; }
 let geom = null, pan = 0, panKey = null, zoom = 1;
+// Manual price scale {hi, lo}; null = auto-fit to the visible bars. Back to auto on every new chart.
+let vs = null, vsKey = null;
 const slotsFor = (base, z, maxSlots) => Math.max(12, Math.min(maxSlots, Math.round(base / z)));
 // Zoom to z (>1 = fewer, wider bars) keeping the bar at canvas x mx where it is; mx null = keep the right edge.
 function zoomTo(z, mx) {
@@ -1179,9 +1183,12 @@ function draw() {
   const levels = (m5 && ind.pd ? [IS.pdh, IS.pdl, IS.pdc] : []).concat(m5 && ind.or && last >= IS.orFrom ? [IS.orh, IS.orl] : []);
   levels.forEach(p => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
   const pad = (hi - lo) * (reviewing ? 0.16 : 0.06) || 1; hi += pad; lo -= pad;
+  const vk = S.roundNo + ':' + reviewing; if (vk !== vsKey) { vsKey = vk; vs = null; }
+  if (vs) { hi = vs.hi; lo = vs.lo; }
+  const autoBtn = $('#btn-auto'); if (autoBtn.hidden !== !vs) autoBtn.hidden = !vs;
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
-  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last};
+  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo};
   const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
 
   // unseen future
@@ -1307,7 +1314,8 @@ function draw() {
     line(IS.macd, C.accent, {y: ym}); line(IS.sig, C.ema9, {y: ym});
   }
 
-  // candles
+  // candles; with a manual scale, everything on the price pane is clipped to it
+  if (vs) { ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, priceH); ctx.clip(); }
   const bw = Math.max(1, sp * .62);
   for (let i = first; i <= vl; i++) {
     const b = bars[i], col = b.c >= b.o ? C.up : C.down, cx = Math.round(x(i)) + .5;
@@ -1368,6 +1376,7 @@ function draw() {
   const lb = bars[last], ly = Math.round(y(lb.c)) + .5, lcol = lb.c >= lb.o ? C.up : C.down;
   ctx.strokeStyle = lcol; ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(Math.min(x(last), left + plotW), ly); ctx.lineTo(left + plotW, ly); ctx.stroke(); ctx.globalAlpha = 1;
   axisTag(ctx, lb.c, ly, lcol, '#fff', left + plotW, axisW, false);
+  if (vs) ctx.restore();
 
   // setup answer key, only once the chart is over
   if (r.done && r.review && S.showStructure !== false) {
@@ -1531,10 +1540,14 @@ function bind() {
     const i = geom.first + Math.floor((mx - geom.left) / geom.sp);
     const ni = (i >= geom.first && i <= geom.last) ? i : null;
     hoverY = e.clientY - rect.top;
+    const onAxis = mx > geom.left + geom.plotW && hoverY >= geom.top && hoverY <= geom.top + geom.priceH;
+    if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis ? 'ns-resize' : '';
     if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
     draw();
   };
-  // Drag left/right to scroll; a vertical swipe on a phone still scrolls the page (touch-action: pan-y).
+  // Drag left/right to scroll. Drag the price axis up/down to squash or stretch the price scale; once it is
+  // off auto, an up/down drag on the chart pans the price. Each drag locks to the direction it starts in.
+  // Off phones a vertical touch swipe still scrolls the page (touch-action: pan-y); phones use none.
   // Two fingers down = pinch; it ends the one-finger drag, which only restarts on a fresh touch.
   let drag = null, pinch = null; const touches = new Map();
   const spread = () => { const [a, b] = [...touches.values()]; return {d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2}; };
@@ -1542,7 +1555,11 @@ function bind() {
     if (!geom || e.button !== 0) return;
     touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
     if (touches.size === 2) { const p = spread(); pinch = {d0: Math.max(p.d, 1), zoom0: zoom}; if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; return; }
-    if (touches.size === 1) drag = {x: e.clientX, pan, id: e.pointerId, moved: false};
+    if (touches.size === 1) {
+      const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top, g = geom;
+      const onAxis = mx > g.left + g.plotW && my >= g.top && my <= g.top + g.priceH;
+      drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onAxis ? 'scale' : null, hi: g.hi, lo: g.lo};
+    }
   });
   cv.addEventListener('pointermove', e => {
     if (touches.has(e.pointerId)) touches.set(e.pointerId, {x: e.clientX, y: e.clientY});
@@ -1552,9 +1569,20 @@ function bind() {
       return;
     }
     if (!drag || e.pointerId !== drag.id) return;
-    const dx = e.clientX - drag.x;
-    if (!drag.moved && Math.abs(dx) < 4) return;
-    if (!drag.moved) { drag.moved = true; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); }
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    if (!drag.moved) {
+      if (!drag.dir) drag.dir = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
+      // An up/down drag on an auto scale does nothing, and leaves the cursor alone.
+      if (drag.dir === 'v' && !vs) { drag = null; return; }
+      drag.moved = true; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
+    }
+    if (drag.dir === 'scale') {
+      // Down squashes (a wider price range), up stretches; the middle price stays put.
+      const mid = (drag.hi + drag.lo) / 2, half = Math.max((drag.hi - drag.lo) / 2 * Math.exp(dy / 150), Math.abs(mid) * 1e-5 || 1e-5);
+      vs = {hi: mid + half, lo: mid - half}; draw(); return;
+    }
+    if (drag.dir === 'v') { const d = dy / geom.priceH * (drag.hi - drag.lo); vs = {hi: drag.hi + d, lo: drag.lo + d}; draw(); return; }
     pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
   });
   const endDrag = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; };
@@ -1569,7 +1597,8 @@ function bind() {
     e.preventDefault(); wheelAcc += d / geom.sp;
     const n = Math.trunc(wheelAcc); if (n) { wheelAcc -= n; panBy(n); }
   }, {passive: false});
-  cv.addEventListener('dblclick', () => { zoom = 1; panBy(-pan); });
+  cv.addEventListener('dblclick', () => { zoom = 1; vs = null; panBy(-pan); });
+  $('#btn-auto').onclick = () => { vs = null; draw(); };
   $('#btn-latest').onclick = () => panBy(-pan);
   $('#btn-zoom-reset').onclick = () => { zoom = 1; draw(); };
   const unhover = () => { hoverI = null; hoverY = null; renderOhlc(); draw(); };
