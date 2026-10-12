@@ -239,6 +239,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .panel .btn.wide{grid-column:auto}
   #btn-close{font-size:13px;line-height:1.15;white-space:normal}
   #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr}
+  .panel .row.trade-row{grid-template-columns:repeat(4,minmax(0,1fr))}
   .btn.call{min-height:56px;padding:0;font-size:16px}
   .panel #btn-new{min-height:36px;padding:2px}
 
@@ -393,10 +394,11 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
       <div class="group">
         <span class="label">Trade</span>
-        <div class="row">
+        <div class="row trade-row">
           <button class="btn long" id="btn-long" type="button">Long <kbd>B</kbd></button>
           <button class="btn short" id="btn-short" type="button">Short <kbd>S</kbd></button>
-          <button class="btn wide" id="btn-close" type="button">Close position <kbd>C</kbd></button>
+          <button class="btn" id="btn-trim" type="button">Trim ½ <kbd>T</kbd></button>
+          <button class="btn" id="btn-close" type="button">Close <kbd>C</kbd></button>
         </div>
       </div>
 
@@ -414,7 +416,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         </div>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close.</p>
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -658,22 +660,49 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.opacit
 
 function openPos(side) {
   const r = R(); if (!r || r.done) return;
-  if (r.pos && r.pos.side === side) { toast(side > 0 ? 'Already long' : 'Already short'); return; }
+  if (r.pos && r.pos.side === side) return addPos();
   if (r.pos) closePos(true);
   const qty = Math.floor(equity() * SIZES[S.sizeIdx] / price());
   if (qty < 1) { toast('Not enough equity for one share'); return; }
-  r.pos = {side, qty, entry: price(), entryIdx: r.idx};
+  r.pos = scaleOf({side, qty, entry: price(), entryIdx: r.idx});
   toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(price()));
+  commit();
+}
+// Scaling bookkeeping; a position opened before adds and trims existed gets it on first use.
+function scaleOf(p) {
+  if (p.bought == null) Object.assign(p, {bought: p.qty, cost: p.qty * p.entry, sold: 0, proceeds: 0, banked: 0, adds: [], trims: []});
+  return p;
+}
+function addPos() {
+  const r = R(), p = scaleOf(r.pos), px = price();
+  const room = Math.floor(2 * equity() / px) - p.qty, qty = Math.min(Math.floor(equity() * SIZES[S.sizeIdx] / px), room);
+  if (qty < 1) { toast(room < 1 ? 'At the 2× buying-power limit' : 'Not enough equity for one share'); return; }
+  p.entry = (p.entry * p.qty + px * qty) / (p.qty + qty); p.qty += qty;
+  p.bought += qty; p.cost += qty * px; p.adds.push(r.idx);
+  toast('Added ' + qty + ' @ ' + fmtP(px) + ' · avg ' + fmtP(p.entry));
+  commit();
+}
+function trimPos() {
+  const r = R(), p = r && r.pos; if (!p || r.done) return;
+  scaleOf(p);
+  const tq = Math.floor(p.qty / 2); if (tq < 1) return closePos();
+  const px = price(), pnl = r2(p.side * tq * (px - p.entry));
+  S.cash = r2(S.cash + pnl); p.banked = r2(p.banked + pnl);
+  p.qty -= tq; p.sold += tq; p.proceeds += tq * px; p.trims.push(r.idx);
+  toast('Trimmed ' + tq + ' @ ' + fmtP(px) + ' · ' + fmt$(pnl, true));
   commit();
 }
 function closePos(quiet) {
   const r = R(), p = r && r.pos; if (!p) return;
-  const pnl = unreal();
+  scaleOf(p);
+  const pnl = unreal(), px = price(), total = r2(p.banked + pnl);
   S.cash = r2(S.cash + pnl);
-  S.trades.unshift({round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.qty, entry: p.entry, exit: price(), pnl, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r)});
+  const t = {round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.bought, entry: p.cost / p.bought, exit: (p.proceeds + p.qty * px) / p.bought, pnl: total, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r)};
+  if (p.adds.length) t.adds = p.adds; if (p.trims.length) t.trims = p.trims;
+  S.trades.unshift(t);
   if (S.trades.length > 500) S.trades.length = 500;
   r.pos = null;
-  if (!quiet) toast('Closed ' + fmt$(pnl, true));
+  if (!quiet) toast('Closed ' + fmt$(total, true));
   commit();
 }
 function step(n = 1) {
@@ -733,12 +762,15 @@ function render() {
   pos.dataset.side = p ? (p.side > 0 ? 'long' : 'short') : 'flat';
   $('#pos-side').textContent = p ? (p.side > 0 ? 'Long' : 'Short') : 'Flat';
   $('#pos-side').className = 'pos-side ' + (p ? (p.side > 0 ? 'up' : 'down') : '');
-  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
-  const pp = $('#pos-pnl'); pp.textContent = fmt$(u, true); pp.className = 'pos-pnl ' + cls(u);
+  const banked = p && p.banked || 0, scaled = p && ((p.adds && p.adds.length) || (p.trims && p.trims.length));
+  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
 
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
   $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
-  $('#btn-close').disabled = r.done || !p;
+  $('#btn-close').disabled = r.done || !p; $('#btn-trim').disabled = r.done || !p;
+  $('#btn-long').innerHTML = (p && p.side > 0 ? 'Add' : 'Long') + ' <kbd>B</kbd>';
+  $('#btn-short').innerHTML = (p && p.side < 0 ? 'Add' : 'Short') + ' <kbd>S</kbd>';
   $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
   const ind = S.ind || {}, nInd = Object.keys(ind).filter(k => ind[k] && k !== 'vol').length;
   document.querySelectorAll('#ind-menu input').forEach(cb => { cb.checked = !!ind[cb.dataset.ind]; });
@@ -1283,8 +1315,8 @@ function draw() {
   }
 
   // trade markers for this chart
-  const tri = (cx, cy, upward, col) => {
-    const s = Math.max(5.5, Math.min(8, sp * .55)), d = upward ? 1 : -1;
+  const tri = (cx, cy, upward, col, k = 1) => {
+    const s = Math.max(5.5, Math.min(8, sp * .55)) * k, d = upward ? 1 : -1;
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx - s, cy + d * s * 1.5); ctx.lineTo(cx + s, cy + d * s * 1.5); ctx.closePath();
     ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
   };
@@ -1292,13 +1324,22 @@ function draw() {
   const entryMark = (i, side) => { if (i < first || i > vl) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up) : tri(x(i), y(b.h) - 6, false, C.down); };
   const roundTrades = S.trades.filter(t => t.round === S.roundNo);
   const entryBars = new Set(roundTrades.map(t => t.entryIdx).concat(r.pos ? [r.pos.entryIdx] : []));
+  const trimMark = (cx, cy) => {
+    ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, 2 * Math.PI); ctx.fillStyle = C.surface; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 4.5, Math.PI / 2, Math.PI * 1.5); ctx.closePath(); ctx.fillStyle = C.ink; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, 2 * Math.PI); ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1;
+  };
+  const scaleMarks = (o, side) => {
+    (o.adds || []).forEach(i => { if (i < first || i > vl) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up, .7) : tri(x(i), y(b.h) - 6, false, C.down, .7); });
+    (o.trims || []).forEach(i => { if (i >= first && i <= vl) trimMark(x(i), y(bars[i].c)); });
+  };
   roundTrades.forEach(t => {
-    entryMark(t.entryIdx, t.side);
+    entryMark(t.entryIdx, t.side); scaleMarks(t, t.side);
     // A reversal opens a new trade on the exit bar; its entry arrow already marks the exit.
     if (t.exitIdx >= first && t.exitIdx <= vl && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
   });
   if (r.pos) {
-    entryMark(r.pos.entryIdx, r.pos.side);
+    entryMark(r.pos.entryIdx, r.pos.side); scaleMarks(r.pos, r.pos.side);
     const ey = Math.round(y(r.pos.entry)) + .5, col = r.pos.side > 0 ? C.up : C.down;
     ctx.strokeStyle = col; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(left, ey); ctx.lineTo(left + plotW, ey); ctx.stroke(); ctx.setLineDash([]);
     axisTag(ctx, r.pos.entry, ey, C.surface, col, left + plotW, axisW, true);
@@ -1416,6 +1457,7 @@ function bind() {
   $('#btn-long').onclick = () => openPos(1);
   $('#btn-short').onclick = () => openPos(-1);
   $('#btn-close').onclick = () => closePos();
+  $('#btn-trim').onclick = () => trimPos();
   $('#btn-step').onclick = () => step(1);
   $('#btn-skip').onclick = () => step(5);
   $('#btn-play').onclick = () => playing ? stopPlay() : startPlay();
@@ -1471,6 +1513,7 @@ function bind() {
     if (k === 'b') openPos(1);
     else if (k === 's') openPos(-1);
     else if (k === 'c') closePos();
+    else if (k === 't') trimPos();
     else if (k === ' ' || k === 'arrowright') { e.preventDefault(); step(1); }
     else if (k === 'f') step(5);
     else if (k === 'p') playing ? stopPlay() : startPlay();
