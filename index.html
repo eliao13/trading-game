@@ -1167,14 +1167,21 @@ function draw() {
   }
   ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(left + plotW + .5, top); ctx.lineTo(left + plotW + .5, H_ - bottom); ctx.stroke();
 
+  // The legend of lines that are on; measured here so the day labels can keep clear of it.
+  const legFont = '600 10px "IBM Plex Mono", monospace';
+  const legend = [['sma20', 'SMA20', C.accent], ['sma50', 'SMA50', C.muted], ['ema9', 'EMA9', C.ema9], ['ema21', 'EMA21', C.ema21], ['vwap', 'VWAP', C.ink], ['bb', 'BB 20,2', C.bb]].filter(([k]) => ind[k] && (k !== 'vwap' || m5));
+  ctx.font = legFont; const legEnd = legend.reduce((a, [, t]) => a + ctx.measureText(t).width + 8, left + 4);
   // round start marker + bar labels (relative to round start; clock times in 5-min mode)
   const startI = H(r) - 1;
   if (m5 && DAY >= first && DAY <= vl) {
     const dx = Math.round(x(DAY) - sp / 2) + .5;
     ctx.strokeStyle = C.line; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(dx, top); ctx.lineTo(dx, H_ - bottom); ctx.stroke(); ctx.lineWidth = 1;
     ctx.fillStyle = C.muted; ctx.font = '10.5px "IBM Plex Sans", sans-serif'; ctx.textBaseline = 'top';
-    ctx.textAlign = 'right'; ctx.fillText('prev day', dx - 5, top + 2);
-    ctx.textAlign = 'left'; ctx.fillText('today', dx + 5, top + 2);
+    const wP = ctx.measureText('prev day').width, wT = ctx.measureText('today').width;
+    const showP = dx - 5 - wP >= left, showT = dx + 5 + wT <= left + plotW;
+    const ly0 = legend.length && (showP ? dx - 5 - wP : dx + 5) < legEnd + 4 ? top + 16 : top + 2;
+    ctx.textAlign = 'right'; if (showP) ctx.fillText('prev day', dx - 5, ly0);
+    ctx.textAlign = 'left'; if (showT) ctx.fillText('today', dx + 5, ly0);
     ctx.font = mono;
   }
   if (startI >= first && startI <= vl) {
@@ -1233,10 +1240,9 @@ function draw() {
   if (m5 && ind.or && last >= IS.orFrom) { level(IS.orh, C.accent, 'ORH', DAY); level(IS.orl, C.accent, 'ORL', DAY); }
   ctx.restore();
   // A small legend names the lines that are on.
-  ctx.font = '600 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.font = legFont; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
   let lx = left + 4;
-  [['sma20', 'SMA20', C.accent], ['sma50', 'SMA50', C.muted], ['ema9', 'EMA9', C.ema9], ['ema21', 'EMA21', C.ema21], ['vwap', 'VWAP', C.ink], ['bb', 'BB 20,2', C.bb]].forEach(([k, t, col]) => {
-    if (!ind[k] || (k === 'vwap' && !m5)) return;
+  legend.forEach(([, t, col]) => {
     ctx.fillStyle = col; ctx.fillText(t, lx, top + 2); lx += ctx.measureText(t).width + 8;
   });
   // RSI and MACD panes
