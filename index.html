@@ -70,7 +70,8 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .chart-wrap{position:relative;height:clamp(320px,58vh,560px)}
 #chart{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:pan-y}
 #chart.dragging{cursor:grabbing}
-.pan-latest{position:absolute;right:72px;bottom:32px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:6px 10px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
+.pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
+.pan-latest{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
 .pan-latest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .progress{height:4px;background:var(--future);border-radius:0 0 10px 10px;overflow:hidden}
 .progress i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
@@ -337,7 +338,10 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </div>
       <div class="chart-wrap">
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
-        <button class="pan-latest" id="btn-latest" type="button" hidden aria-label="Scroll to the latest bar">Latest ⟶</button>
+        <div class="pan-btns">
+          <button class="pan-latest" id="btn-zoom-reset" type="button" hidden aria-label="Reset the chart zoom">Reset zoom</button>
+          <button class="pan-latest" id="btn-latest" type="button" hidden aria-label="Scroll to the latest bar">Latest ⟶</button>
+        </div>
         <div class="loading" id="loading">Loading price history…</div>
         <div class="overlay" id="overlay" hidden>
           <div class="box">
@@ -1127,6 +1131,7 @@ function draw() {
   pan = Math.max(0, Math.min(pan, last + blank - slots + 1));
   const sp = plotW / slots, edge = last + blank - pan, first = Math.max(0, edge - slots + 1), vl = Math.min(last, edge);
   const latestBtn = $('#btn-latest'); if (latestBtn.hidden !== !pan) latestBtn.hidden = !pan;
+  const zoomBtn = $('#btn-zoom-reset'), zoomed = slots !== slotsFor(base, 1, maxSlots); if (zoomBtn.hidden !== !zoomed) zoomBtn.hidden = !zoomed;
   // Panes below the price: each one takes a fifth of the height, and the price keeps at least half.
   const ind = S.ind || {}, IS = indSeries(bars, m5), lower = ['vol', 'rsi', 'macd'].filter(k => ind[k]), plotH = H_ - bottom - top;
   const priceH = lower.length ? plotH * Math.max(0.5, 1 - 0.2 * lower.length) : plotH;
@@ -1514,6 +1519,7 @@ function bind() {
   }, {passive: false});
   cv.addEventListener('dblclick', () => { zoom = 1; panBy(-pan); });
   $('#btn-latest').onclick = () => panBy(-pan);
+  $('#btn-zoom-reset').onclick = () => { zoom = 1; draw(); };
   const unhover = () => { hoverI = null; hoverY = null; renderOhlc(); draw(); };
   cv.addEventListener('pointermove', hover);
   cv.addEventListener('pointerdown', hover);
