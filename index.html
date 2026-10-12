@@ -414,7 +414,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         </div>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 4:00 PM close.</p>
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -482,7 +482,7 @@ const FW = r => r.end - (H(r) - 1);
 const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of 5-min bar i, or at its close with close=true.
-const clock = (i, close) => { const m = 570 + (i % DAY) * 5 + (close ? 5 : 0), h = Math.floor(m / 60), mm = m % 60; return (h > 12 ? h - 12 : h) + ':' + String(mm).padStart(2, '0'); };
+const clock = (i, close) => { const m = 570 + (i % DAY) * 5 + (close ? 5 : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
 const KEY = 'blindtape.v2';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -769,7 +769,7 @@ function render() {
     $('#ov-label').textContent = 'Chart ' + S.roundNo + ' complete · it was';
     $('#ov-tk').textContent = r.ticker;
     $('#ov-name').textContent = r.name + ' · real price ' + fmtP(realStart) + ' → ' + fmtP(realEnd);
-    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 AM to 4:00 PM ET · chart prices were rescaled to hide the level' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
+    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 to 16:00 ET · chart prices were rescaled to hide the level' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
     const moveDd = `<dd><span class="${cls(mv)}">${fmtPct(mv)}</span></dd>`;
     if (call) {
       const avgYour = rc.length ? rc.reduce((a, c) => a + c.side * (c.exit / c.entry - 1), 0) / rc.length : 0, upHits = rc.filter(c => c.exit > c.entry).length;
@@ -842,7 +842,7 @@ const DESC = {
   hl: () => 'in an uptrend (the last swing high and swing low are both above the ones before), a new swing low forms above the previous one: long. In a downtrend, a new lower swing high: short.',
   inside: u => `a ${u} trades inside the previous ${u}'s range, then the next ${u} closes beyond that previous ${u}'s high (long) or low (short).`,
   range: u => `the previous 10 ${u}s fit inside 3 ATR; the ${u} tags the top or bottom of that range and closes back inside.`,
-  orb: () => 'the first 5-min close above the high, or below the low, of the first 30 minutes (9:30–10:00).',
+  orb: () => 'the first 5-min close above the high, or below the low, of the first 30 minutes (09:30–10:00).',
   pdhl: () => "the first close today that crosses above the previous session's high, or below its low."
 };
 function renderHow(r) {
