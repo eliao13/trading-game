@@ -65,6 +65,12 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .ohlc{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
 .ohlc b{color:var(--ink);font-weight:500}
 .spacer{flex:1}
+.tf-seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.tf-seg button{border:0;background:transparent;color:var(--ink);font:600 11.5px var(--mono);padding:3px 9px;min-height:26px;cursor:pointer}
+.tf-seg button+button{border-left:1px solid var(--line)}
+.tf-seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
+.tf-seg button.na{color:var(--muted);opacity:.55}
+.tf-seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
 .toggle input{accent-color:var(--accent)}
 .chart-wrap{position:relative;height:clamp(320px,58vh,560px)}
@@ -301,7 +307,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
           <button class="btn icon" id="btn-menu" type="button" aria-label="Stats, history and how to play"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg></button>
         </div>
       </div>
-      <p>Read raw price action on real charts with the ticker, date and price level hidden. <b>Trade</b> it bar by bar, or <b>Call it</b>: say up or down for the next 5 bars and get scored straight away. Every chart is one real trading day on 5-min bars, from the last three months, with the session before it for context.</p>
+      <p>Read raw price action on real charts with the ticker, date and price level hidden. <b>Trade</b> it bar by bar, or <b>Call it</b>: say up or down for the next 5 bars and get scored straight away. Every chart is one real trading day on 5-min bars, from the last three months, with the session before it for context. Recent days also have 1-min bars: switch with 5m / 1m above the chart, and those charts start at the 09:30 open.</p>
       <button class="btn primary intro-close" id="btn-intro-close" type="button">Got it</button>
     </div>
     <div class="stats" aria-live="polite">
@@ -318,6 +324,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       <div class="chart-head">
         <span class="ticker" id="ticker">XXXX</span>
         <span class="tag" id="round-tag">Chart 1</span>
+        <span class="tf-seg" id="tf-seg" role="group" aria-label="Timeframe"><button type="button" data-tf="5m">5m</button><button type="button" data-tf="1m">1m</button></span>
         <span class="ohlc num" id="ohlc"></span>
         <span class="spacer"></span>
         <details class="ind-menu" id="ind-menu">
@@ -492,8 +499,14 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 (() => {
 const START_CASH = 10000, HIST = 90, FWD = 80, SIZES = [0.25, 0.5, 1];
 // 5-min rounds: previous session (78 bars) + first 30 minutes of today as history, then trade to the close.
-const DAY = 78, M5_HIST = DAY + 6;
-const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json', 'tape-5m-5.json', 'tape-5m-6.json']}};
+// Days that also have 1-min data start at the open (09:30) and can be viewed on either timeframe. DAY and BM
+// describe the view being shown (bars per session, minutes per bar); useTF sets them from the round.
+const DAY5 = 78, M5_HIST = DAY5 + 6;
+let DAY = DAY5, BM = 5;
+const ORN = () => 30 / BM; // bars in the 30-minute opening range
+const useTF = r => { BM = r && r.tf === '1m' ? 1 : 5; DAY = 390 / BM; };
+const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json']}};
+const M1_FILES = ['tape-1m-1.json', 'tape-1m-2.json'];
 const MODE_TYPES = {daily: ['bos', 'failed', 'retest', 'hl', 'inside', 'range'], m5: ['orb', 'pdhl', 'bos', 'failed', 'retest', 'hl', 'inside', 'range']};
 const CALL_N = 5;
 const gameOf = r => (r && r.game) || 'trade';
@@ -502,8 +515,8 @@ const H = r => r.hist || HIST;
 const FW = r => r.end - (H(r) - 1);
 const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
-// Clock time (ET) at the open of 5-min bar i, or at its close with close=true.
-const clock = (i, close) => { const m = 570 + (i % DAY) * 5 + (close ? 5 : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
+// Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
+const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
 const KEY = 'blindtape.v2';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -517,9 +530,11 @@ const tagLabel = id => (TAGS.find(t => t.id === id) || TAGS[TAGS.length - 1]).la
 const EDGE_INTRO = n => `Each ${n} is tagged automatically with the price-action setup it lined up with, using the rules shown at the end of every chart, or No setup. This table then shows whether your direction beats a coin flip on the exact same bars.`;
 const PRIORITY = ['orb', 'pdhl', 'failed', 'bos', 'retest', 'hl', 'inside', 'range'];
 // Tag = the setup in your direction that fired on the entry day or up to 2 days before it (the latest one wins).
+// Setups are always found on 5-min bars; on 1-min the entry counts at the last complete 5-min bar.
 function autoTag(r, side, entryIdx) {
-  const {signals} = detectSetups(r, H(r) - 3, entryIdx);
-  const hits = signals.filter(x => x.dir === side && x.i >= entryIdx - 2 && x.i <= entryIdx)
+  const e5 = to5(r, entryIdx);
+  const {signals} = detectSetups(r, H5(r) - 3, e5);
+  const hits = signals.filter(x => x.dir === side && x.i >= e5 - 2 && x.i <= e5)
     .sort((a, b) => b.i - a.i || PRIORITY.indexOf(a.type) - PRIORITY.indexOf(b.type));
   return hits.length ? hits[0].type : 'none';
 }
@@ -583,6 +598,14 @@ async function loadData(mode = 'daily') {
   files.slice(1).forEach(f => get(f).then(p => { first.push(...prep(p)); }).catch(() => {}));
   return first;
 }
+// 1-min days stay packed until a chart needs one (all of them decoded would be tens of MB).
+let M1 = null, m1Loading = null;
+function ensure1m() {
+  if (!m1Loading) m1Loading = Promise.all(M1_FILES.map(f => fetch(f).then(res => { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })))
+    .then(parts => { const m = new Map(); for (const x of parts.flat()) m.set(x.s, new Map(x.days.map(t => [t[0], t]))); M1 = m; return m; })
+    .catch(e => { m1Loading = null; throw e; });
+  return m1Loading;
+}
 async function ensureData(mode) { if (!DATAS[mode]) DATAS[mode] = await loadData(mode); return DATAS[mode]; }
 async function setMode(mode) {
   if (!MODES[mode] || (S.mode || 'daily') === mode) return;
@@ -612,7 +635,7 @@ function makeCall(dir) {
   const r = R(); if (!r || r.done || gameOf(r) !== 'call' || animating) return;
   const from = r.idx, to = Math.min(from + CALL_N, r.end), move = r.bars[to].c / r.bars[from].c - 1;
   if (dir) {
-    S.calls.unshift({round: S.roundNo, mode: modeOf(r), ticker: r.ticker, side: dir, entryIdx: from, exitIdx: to, entry: r.bars[from].c, exit: r.bars[to].c, pnl: 0, hit: dir * move > 0, tag: autoTag(r, dir, from), auto: true, rules: 2});
+    S.calls.unshift({round: S.roundNo, mode: modeOf(r), tf: r.tf || '5m', ticker: r.ticker, side: dir, entryIdx: from, exitIdx: to, entry: r.bars[from].c, exit: r.bars[to].c, pnl: 0, hit: dir * move > 0, tag: autoTag(r, dir, from), auto: true, rules: 2});
     if (S.calls.length > 3000) S.calls.length = 3000;
   }
   r.lastCall = {dir, move, hit: dir * move > 0};
@@ -630,19 +653,20 @@ function makeCall(dir) {
 // Skip to move: reveal bars until one has at least JUMP_K x the average range of the 20 bars before it, or the
 // 15:00 bar. Only revealed bars are tested, so it never peeks ahead. Measured on the pool (2026-10-12): from a
 // midday start it skips a median 19 bars, and the 5 bars after the stop move 1.44x more than usual.
-const JUMP_K = 2, JUMP_CAP = DAY + 66;
+// The test always runs on 5-min bars; on the 1-min view a 5-min bar counts once its last minute is revealed.
+const JUMP_K = 2, JUMP_CAP5 = DAY5 + 66;
 const jumpTrigger = (bars, i) => { let s = 0; for (let q = i - 20; q < i; q++) s += bars[q].h - bars[q].l; return s > 0 && bars[i].h - bars[i].l >= JUMP_K * s / 20; };
-const canJump = r => r && !r.done && !animating && modeOf(r) === 'm5' && r.idx < JUMP_CAP;
+const canJump = r => r && !r.done && !animating && modeOf(r) === 'm5' && r.idx < from5(r, JUMP_CAP5);
 function jumpToMove() {
   const r = R(); if (!canJump(r)) return;
   stopPlay();
-  const from = r.idx, call = gameOf(r) === 'call', stepN = call ? CALL_N : 1;
+  const from = r.idx, call = gameOf(r) === 'call', stepN = call ? CALL_N : 1, b5 = bars5(r), cap = from5(r, JUMP_CAP5);
   let hit = false;
-  // Call it moves in whole 5-bar passes; it stops after the pass that revealed the move.
-  while (r.idx < JUMP_CAP && r.idx + stepN <= r.end) {
-    const to = r.idx + stepN;
-    for (let i = r.idx + 1; i <= to; i++) if (jumpTrigger(r.bars, i)) hit = true;
-    r.idx = to;
+  // Call it moves in whole passes; it stops after the pass that revealed the move.
+  while (r.idx < cap && r.idx + stepN <= r.end) {
+    const was5 = to5(r, r.idx);
+    r.idx += stepN;
+    for (let i = was5 + 1; i <= to5(r, r.idx); i++) if (jumpTrigger(b5, i)) hit = true;
     if (hit) break;
   }
   const n = r.idx - from, at = clock(r.idx, true);
@@ -650,6 +674,32 @@ function jumpToMove() {
   else if (r.idx >= r.end) { endRound(); toast('Skipped ' + n + ' bars to the close'); return; }
   toast(hit ? 'Skipped ' + n + ' bar' + (n === 1 ? '' : 's') + ' to ' + at + ' · wide bar' : 'Nothing moved · skipped to ' + at);
   commit();
+}
+
+// Switch the chart between 5-min and 1-min. Both views show the same day; the 5-min view only shows complete
+// bars, so leaving 1-min in the middle of a 5-min bar first plays out the rest of that bar. Marks keep their
+// exact minute (o.mi) so switching back and forth never moves them.
+function setView(r, tf) { r.tf = tf; r.bars = tf === '1m' ? r.b1 : r.b5; r.hist = tf === '1m' ? 5 * r.hist5 : r.hist5; r.end = tf === '1m' ? 5 * END5(r) + 4 : END5(r); }
+function setTF(tf) {
+  const r = R(); if (!r || animating || (r.tf || '5m') === tf) return;
+  S.tf = tf;
+  if (!r.b1) { save(); render(); toast(tf === '1m' ? 'This day has no 1-min data · new charts open on 1-min when they can' : '5-min'); return; }
+  stopPlay();
+  let note = '';
+  if (tf === '5m' && (r.idx + 1) % 5) { r.idx = Math.min(r.end, r.idx + 4 - r.idx % 5); note = ' · played on to ' + clock(r.idx, true) + ' to finish the 5-min bar'; }
+  const old = r.tf || '5m', mOf = i => old === '1m' ? i : i * 5 + 4, back = m => old === '1m' ? m : Math.floor(m / 5), vOf = m => tf === '1m' ? m : Math.floor(m / 5);
+  const conv = (o, key, i) => { o.mi = o.mi || {}; const c = o.mi[key], m = c != null && back(c) === i ? c : mOf(i); o.mi[key] = m; return vOf(m); };
+  for (const o of [r.pos].concat(S.trades.filter(t => t.round === S.roundNo), S.calls.filter(c => c.round === S.roundNo))) {
+    if (!o) continue;
+    o.entryIdx = conv(o, 'e', o.entryIdx);
+    if (o.exitIdx != null) o.exitIdx = conv(o, 'x', o.exitIdx);
+    if (o.adds) o.adds = o.adds.map((i, k) => conv(o, 'a' + k, i));
+    if (o.trims) o.trims = o.trims.map((i, k) => conv(o, 't' + k, i));
+  }
+  r.idx = tf === '1m' ? r.idx * 5 + 4 : (r.idx + 1) / 5 - 1;
+  setView(r, tf);
+  hoverI = null; commit();
+  toast((tf === '1m' ? '1-min bars' : '5-min bars') + note);
 }
 
 // Pick a random real window, then rescale every price by one constant so the level can't give the stock away.
@@ -678,27 +728,50 @@ function newRoundRaw() {
 }
 function newRound5m() {
   S.recent = S.recent || [];
-  let k, tries = 0;
-  do { k = Math.floor(Math.random() * DATA.length); } while (S.recent.includes(DATA[k].s) && ++tries < 20);
-  // g marks a day whose previous session is missing from the data, so it has no true prior day to show.
-  const x = DATA[k]; let j; do { j = 1 + Math.floor(Math.random() * (x.days.length - 1)); } while (x.days[j].g);
-  const pd = x.days[j - 1], td = x.days[j];
-  const target = Math.exp(Math.log(15) + Math.random() * Math.log(400 / 15));
-  const scale = target / td.c[M5_HIST - DAY - 1];
-  const bars = [];
-  for (const d of [pd, td]) for (let i = 0; i < DAY; i++) {
-    const o = r2(d.o[i] * scale), c = r2(d.c[i] * scale);
-    bars.push({o, c, h: Math.max(r2(d.h[i] * scale), o, c), l: Math.min(r2(d.l[i] * scale), o, c), v: d.v[i]});
+  // A day has 1-min data if it and the session before it are both in the 1-min files.
+  const ok1 = (x, j) => { const m = M1 && M1.get(x.s); return !!(m && m.has(x.days[j].d) && m.has(x.days[j - 1].d)); };
+  const want1 = S.tf === '1m' && !!M1;
+  let x, j, tries = 0;
+  for (;;) {
+    let k; do { k = Math.floor(Math.random() * DATA.length); } while (S.recent.includes(DATA[k].s) && ++tries < 20);
+    x = DATA[k];
+    // g marks a day whose previous session is missing from the data, so it has no true prior day to show.
+    const js = []; for (let q = 1; q < x.days.length; q++) if (!x.days[q].g && (!want1 || ok1(x, q))) js.push(q);
+    if (js.length) { j = js[Math.floor(Math.random() * js.length)]; break; }
   }
+  const pd = x.days[j - 1], td = x.days[j], m1 = ok1(x, j) ? M1.get(x.s) : null;
+  const target = Math.exp(Math.log(15) + Math.random() * Math.log(400 / 15));
+  const start = m1 ? pd.c[DAY5 - 1] : td.c[M5_HIST - DAY5 - 1], scale = target / start;
+  const mk = days => { const out = []; for (const d of days) for (let i = 0; i < d.c.length; i++) {
+    const o = r2(d.o[i] * scale), c = r2(d.c[i] * scale);
+    out.push({o, c, h: Math.max(r2(d.h[i] * scale), o, c), l: Math.min(r2(d.l[i] * scale), o, c), v: d.v[i]});
+  } return out; };
+  const b5 = mk([pd, td]), hist5 = m1 ? DAY5 : M5_HIST;
   S.recent = [x.s, ...S.recent].slice(0, 8);
   S.roundNo++;
   S.round = {
     mode: 'm5', ticker: x.s.split(':')[1], name: x.n, scale, from: td.d, to: td.d, prevDay: pd.d,
-    realStart: td.c[M5_HIST - DAY - 1], realEnd: td.c[DAY - 1],
-    bars, hist: M5_HIST, idx: M5_HIST - 1, end: 2 * DAY - 1, pos: null, startEq: S.cash, done: false
+    realStart: start, realEnd: td.c[DAY5 - 1],
+    b5, bars: b5, tf: '5m', hist5, hist: hist5, idx: hist5 - 1, end: 2 * DAY5 - 1, pos: null, startEq: S.cash, done: false
   };
+  if (m1) {
+    // The 5-min view of a 1-min day is its own minutes grouped by five, so the two views always agree
+    // (the stored 5-min bars can differ by a tick where a minute had no trades and was filled flat).
+    const b1 = S.round.b1 = mk([decodeDay(m1.get(pd.d)), decodeDay(m1.get(td.d))]), r5 = [];
+    for (let i = 0; i < b1.length; i += 5) { const g = b1.slice(i, i + 5); r5.push({o: g[0].o, c: g[4].c, h: Math.max(...g.map(b => b.h)), l: Math.min(...g.map(b => b.l)), v: g.reduce((a, b) => a + b.v, 0)}); }
+    S.round.b5 = S.round.bars = r5;
+    if (S.tf === '1m') { setView(S.round, '1m'); S.round.idx = S.round.hist - 1; }
+  }
 }
 const R = () => S.round;
+// Index helpers between the view's bars and the 5-min bars that setups and Skip to move use.
+const is1 = r => !!(r && r.tf === '1m');
+const bars5 = r => r.b5 || r.bars;
+const H5 = r => r.hist5 || H(r);
+const END5 = r => r.b5 ? 2 * DAY5 - 1 : r.end;
+const to5 = (r, i) => is1(r) ? Math.floor((i + 1) / 5) - 1 : i;   // last complete 5-min bar at view bar i
+const from5 = (r, i5) => is1(r) ? i5 * 5 + 4 : i5;                 // view bar where 5-min bar i5 closes
+const start5 = (r, i5) => is1(r) ? i5 * 5 : i5;                    // view bar where it opens
 const price = () => R().bars[R().idx].c;
 const unreal = () => { const p = R().pos; return p ? r2(p.side * p.qty * (price() - p.entry)) : 0; };
 const equity = () => S.cash + unreal();
@@ -744,7 +817,7 @@ function closePos(quiet) {
   scaleOf(p);
   const pnl = unreal(), px = price(), total = r2(p.banked + pnl);
   S.cash = r2(S.cash + pnl);
-  const t = {round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.bought, entry: p.cost / p.bought, exit: (p.proceeds + p.qty * px) / p.bought, pnl: total, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r)};
+  const t = {round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.bought, entry: p.cost / p.bought, exit: (p.proceeds + p.qty * px) / p.bought, pnl: total, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r), tf: r.tf || '5m'};
   if (p.adds.length) t.adds = p.adds; if (p.trims.length) t.trims = p.trims;
   S.trades.unshift(t);
   if (S.trades.length > 500) S.trades.length = 500;
@@ -792,6 +865,7 @@ function commit() { save(); render(); }
 
 
 function render() {
+  useTF(R());
   const r = R(), eq = equity(), tot = eq - START_CASH, call = gameOf(r) === 'call';
   document.querySelectorAll('#game-seg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.game === gameOf(r))));
   $('#trade-panel').hidden = call; $('#call-panel').hidden = !call;
@@ -839,15 +913,21 @@ function render() {
   $('#setups-toggle').checked = S.showSetups !== false;
   $('#structure-toggle').checked = S.showStructure !== false;
   $('#steady').checked = $('#steady-m').checked = !!S.steady;
+  document.querySelectorAll('#tf-seg button').forEach(b => {
+    b.setAttribute('aria-pressed', String(b.dataset.tf === (r.tf || '5m')));
+    b.classList.toggle('na', b.dataset.tf === '1m' && !r.b1);
+    b.title = b.dataset.tf === '1m' && !r.b1 ? 'No 1-min data for this day' : '';
+  });
   if (call) {
     const lc = r.lastCall, rc = S.calls.filter(c => c.round === S.roundNo), rh = rc.filter(c => c.hit).length;
     const callsLeft = r.done ? 0 : Math.floor((r.end - r.idx) / CALL_N);
     $('#call-result').dataset.res = !lc || !lc.dir ? 'none' : lc.hit ? 'hit' : 'miss';
     $('#call-head').textContent = !lc ? 'Up or down?' : !lc.dir ? 'Passed' : lc.hit ? '✓ Right' : '✗ Wrong';
     $('#call-head').className = 'pos-side ' + (!lc || !lc.dir ? '' : lc.hit ? 'up' : 'down');
-    $('#call-sub').textContent = !lc ? `Where will price be ${fwdLabel(r)} from now?` : `${lc.dir ? 'You called ' + (lc.dir > 0 ? 'up' : 'down') : 'You passed'} · next ${fwdLabel(r)} ${fmtPct(lc.move)}`;
+    const callSpan = m5 ? CALL_N * BM + ' min' : fwdLabel(r);
+    $('#call-sub').textContent = !lc ? `Where will price be ${callSpan} from now?` : `${lc.dir ? 'You called ' + (lc.dir > 0 ? 'up' : 'down') : 'You passed'} · next ${callSpan} ${fmtPct(lc.move)}`;
     $('#call-score').textContent = (rc.length ? `${rh} of ${rc.length} right on this chart` : 'No calls on this chart yet') + (r.done ? '' : ` · ${callsLeft} call${callsLeft === 1 ? '' : 's'} left`);
-    $('#call-label').textContent = 'Call the next 5 ' + (m5 ? 'bars (25 min)' : 'days');
+    $('#call-label').textContent = 'Call the next 5 ' + (m5 ? 'bars (' + CALL_N * BM + ' min)' : 'days');
     $('#btn-up').disabled = $('#btn-down').disabled = $('#btn-pass').disabled = r.done || animating;
   }
   $('#review-ctl').hidden = !(r.done && r.review);
@@ -863,7 +943,7 @@ function render() {
     $('#ov-label').textContent = 'Chart ' + S.roundNo + ' complete · it was';
     $('#ov-tk').textContent = r.ticker;
     $('#ov-name').textContent = r.name + ' · real price ' + fmtP(realStart) + ' → ' + fmtP(realEnd);
-    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · 10:00 to 16:00 ET · chart prices were rescaled to hide the level' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
+    $('#ov-dates').textContent = m5 ? fmtDate(r.from) + ' · ' + (r.b1 ? '09:30' : '10:00') + ' to 16:00 ET · chart prices were rescaled to hide the level' : fmtDate(r.from) + ' – ' + fmtDate(r.to);
     const moveDd = `<dd><span class="${cls(mv)}">${fmtPct(mv)}</span></dd>`;
     if (call) {
       const avgYour = rc.length ? rc.reduce((a, c) => a + c.side * (c.exit / c.entry - 1), 0) / rc.length : 0, upHits = rc.filter(c => c.exit > c.entry).length;
@@ -948,7 +1028,7 @@ function renderHow(r) {
     (m5 && S.showSetups !== false ? '<span>dashed lines: prior-day high/low, opening range</span>' : '');
 }
 // Rules only look at bars up to and including the signal bar, so nothing peeks ahead.
-function detectSetups(r, from, to) { return detectPA(r.bars, from, to, modeOf(r) === 'm5'); }
+function detectSetups(r, from, to) { return detectPA(bars5(r), from, to, modeOf(r) === 'm5'); }
 function indicators(bars) {
   const n = bars.length, tr = [], atr = [], s20 = [], s50 = [];
   for (let i = 0; i < n; i++) {
@@ -981,10 +1061,10 @@ function indSeries(bars, m5) {
   if (m0 >= 0) emaSeries(s.macd.slice(m0), 9).forEach((v, j) => { s.sig[m0 + j] = v; s.hist[m0 + j] = v == null ? null : s.macd[m0 + j] - v; });
   if (m5) {
     s.vwap = vwapSeries(bars);
-    const pd = bars.slice(0, DAY), or = bars.slice(DAY, DAY + 6);
+    const pd = bars.slice(0, DAY), or = bars.slice(DAY, DAY + ORN());
     s.pdh = Math.max(...pd.map(b => b.h)); s.pdl = Math.min(...pd.map(b => b.l)); s.pdc = pd[DAY - 1].c;
     // The opening range is complete at the 10:00 bar's close, the first bar it may be drawn on.
-    s.orh = Math.max(...or.map(b => b.h)); s.orl = Math.min(...or.map(b => b.l)); s.orFrom = DAY + 5;
+    s.orh = Math.max(...or.map(b => b.h)); s.orl = Math.min(...or.map(b => b.l)); s.orFrom = DAY + ORN() - 1;
   }
   return s;
 }
@@ -1004,6 +1084,7 @@ function mergeBoxes(ranges) {
 }
 // Price-action rules. In 5-min mode bars = previous session (0-77) + today (78-155).
 function detectPA(bars, from, to, m5) {
+  const DAY = DAY5; // always runs on 5-min bars
   const N = swingN(m5), {atr} = indicators(bars), gap = m5 ? 6 : 5, maxRetest = m5 ? 20 : 15;
   const signals = [], lastAt = {}, ranges = [], swings = [], once = {};
   const add = (type, dir, i) => {
@@ -1084,14 +1165,14 @@ function detectPA(bars, from, to, m5) {
   return {signals, boxes: mergeBoxes(ranges), swings, levels: m5 ? [{p: pdh, t: 'PDH'}, {p: pdl, t: 'PDL'}, {p: orh, t: 'ORH'}, {p: orl, t: 'ORL'}] : []};
 }
 function roundSetups(r) {
-  if (!r.setups || r.setupsFrom !== H(r) - 3 || r.setupsV !== 2) { r.setups = detectSetups(r, H(r) - 3, r.end); r.setupsFrom = H(r) - 3; r.setupsV = 2; }
+  if (!r.setups || r.setupsFrom !== H5(r) - 3 || r.setupsV !== 2) { r.setups = detectSetups(r, H5(r) - 3, END5(r)); r.setupsFrom = H5(r) - 3; r.setupsV = 2; }
   return r.setups;
 }
 function renderSetupSummary(r) {
   const call = gameOf(r) === 'call', noun = call ? 'call' : 'trade';
   const {signals} = roundSetups(r), rt = (call ? S.calls : S.trades).filter(t => t.round === S.roundNo);
-  const takes = sig => rt.filter(t => t.side === sig.dir && t.entryIdx >= sig.i && t.entryIdx <= sig.i + 2);
-  const played = signals.filter(x => x.i >= H(r) - 1);
+  const takes = sig => rt.filter(t => t.side === sig.dir && to5(r, t.entryIdx) >= sig.i && to5(r, t.entryIdx) <= sig.i + 2);
+  const played = signals.filter(x => x.i >= H5(r) - 1);
   const matched = new Set();
   const rows = MODE_TYPES[modeOf(r)].map(type => {
     const list = played.filter(x => x.type === type); if (!list.length) return '';
@@ -1209,6 +1290,7 @@ function panBy(n) { pan = Math.max(0, pan + n); draw(); }
 
 function draw() {
   if (!S || !S.round) return;
+  useTF(S.round);
   const cv = $('#chart'), wrap = cv.parentElement, W = wrap.clientWidth, H_ = wrap.clientHeight;
   if (!W || !H_) return;
   const dpr = window.devicePixelRatio || 1;
@@ -1220,7 +1302,7 @@ function draw() {
   const axisW = 64, bottom = 24, top = 12, left = 6, blank = reviewing ? 2 : 7;
   const plotW = W - axisW - left;
   // Review fits every played bar plus a little history, so the whole answer key is on screen.
-  const m5 = modeOf(r) === 'm5', reviewFrom = m5 ? DAY - 12 : H(r) - 10;
+  const m5 = modeOf(r) === 'm5', reviewFrom = m5 ? DAY - 60 / BM : H(r) - 10;
   const base = reviewing ? r.end - reviewFrom + 1 + blank : Math.max(30, Math.min(150, Math.floor(plotW / 8)));
   const maxSlots = Math.max(base, last + blank + 1), slots = slotsFor(base, zoom, maxSlots);
   const key = S.roundNo + ':' + last + ':' + reviewing; if (key !== panKey) { panKey = key; pan = 0; }
@@ -1291,8 +1373,8 @@ function draw() {
   }
   ctx.fillStyle = C.muted; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
   if (m5) {
-    const mins = sp * 6 > 44 ? 30 : sp * 12 > 44 ? 60 : 120;
-    for (let i = first; i <= vl; i++) { const m = 570 + (i % DAY) * 5; if ((m % mins === 0 || i % DAY === 0) && x(i) > left + 16) ctx.fillText(clock(i), x(i), H_ - bottom + 6); }
+    const mins = (BM === 1 ? [5, 10, 15, 30, 60, 120] : [30, 60, 120]).find(L => L / BM * sp > 44) || 120;
+    for (let i = first; i <= vl; i++) { const m = 570 + (i % DAY) * BM; if ((m % mins === 0 || i % DAY === 0) && x(i) > left + 16) ctx.fillText(clock(i), x(i), H_ - bottom + 6); }
   } else {
     const every = sp > 10 ? 10 : 20;
     for (let i = first; i <= vl; i++) {
@@ -1439,48 +1521,50 @@ function draw() {
 
   // setup answer key, only once the chart is over
   if (r.done && r.review && S.showStructure !== false) {
-    const {swings} = roundSetups(r);
+    // The answer key is found on 5-min bars; v() places a 5-min bar on the view (its closing minute on 1-min).
+    const {swings} = roundSetups(r), B5 = bars5(r), E5 = END5(r), v = i5 => from5(r, i5);
     ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
     ctx.font = '600 9px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'center';
     for (const sw of swings || []) {
-      if (sw.i < first) continue;
+      if (v(sw.i) < first) continue;
       // Each swing level runs until a close breaks it.
-      let j = sw.i + 1; while (j < r.end && !(sw.hi ? bars[j].c > sw.p : bars[j].c < sw.p)) j++;
+      let j = sw.i + 1; while (j < E5 && !(sw.hi ? B5[j].c > sw.p : B5[j].c < sw.p)) j++;
       const ly2 = Math.round(y(sw.p)) + .5;
       ctx.strokeStyle = C.muted; ctx.globalAlpha = .55; ctx.setLineDash([1.5, 3]);
-      ctx.beginPath(); ctx.moveTo(x(sw.i), ly2); ctx.lineTo(Math.min(x(j), left + plotW), ly2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x(v(sw.i)), ly2); ctx.lineTo(Math.min(x(v(j)), left + plotW), ly2); ctx.stroke(); ctx.setLineDash([]);
       if (sw.label) {
         ctx.globalAlpha = .9; ctx.fillStyle = C.ink; ctx.textBaseline = sw.hi ? 'bottom' : 'top';
-        ctx.fillText(sw.label, x(sw.i), sw.hi ? y(bars[sw.i].h) - 3 : y(bars[sw.i].l) + 3);
+        ctx.fillText(sw.label, x(v(sw.i)), sw.hi ? y(B5[sw.i].h) - 3 : y(B5[sw.i].l) + 3);
       }
       ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
   if (r.done && r.review && S.showSetups !== false) {
-    const {signals, boxes, levels} = roundSetups(r);
+    const {signals, boxes, levels} = roundSetups(r), B5 = bars5(r), v = i5 => from5(r, i5);
     ctx.save(); ctx.beginPath(); ctx.rect(left, top, plotW, priceH); ctx.clip();
     for (const lv of levels || []) {
-      const ly2 = Math.round(y(lv.p)) + .5, x0 = lv.t.startsWith('P') ? left : x(DAY + 5) + sp / 2;
+      const ly2 = Math.round(y(lv.p)) + .5, x0 = lv.t.startsWith('P') ? left : x(DAY + ORN() - 1) + sp / 2;
       ctx.strokeStyle = C.muted; ctx.globalAlpha = .7; ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(x0, ly2); ctx.lineTo(left + plotW, ly2); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = C.muted; ctx.font = '600 9.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'; ctx.fillText(lv.t, left + plotW - 4, ly2 - 2); ctx.globalAlpha = 1;
     }
     for (const bx of boxes) {
-      if (bx.i1 < first) continue;
-      const x0 = x(Math.max(bx.i0, first)) - sp / 2, x1 = x(bx.i1) + sp / 2, y0 = y(bx.hi), y1 = y(bx.lo);
+      if (v(bx.i1) < first) continue;
+      const x0 = x(Math.max(start5(r, bx.i0), first)) - sp / 2, x1 = x(v(bx.i1)) + sp / 2, y0 = y(bx.hi), y1 = y(bx.lo);
       ctx.fillStyle = C.accent; ctx.globalAlpha = .08; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       ctx.globalAlpha = .45; ctx.strokeStyle = C.accent; ctx.setLineDash([4, 3]); ctx.strokeRect(x0 + .5, y0 + .5, x1 - x0 - 1, y1 - y0 - 1); ctx.setLineDash([]); ctx.globalAlpha = 1;
     }
     const stack = {};
     ctx.font = '600 9.5px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const sg of signals) {
-      if (sg.i < first) continue;
-      const b = bars[sg.i], k = sg.i + ':' + sg.dir, nth = stack[k] = (stack[k] || 0) + 1;
+      if (v(sg.i) < first) continue;
+      const b = B5[sg.i], k = sg.i + ':' + sg.dir, nth = stack[k] = (stack[k] || 0) + 1;
       const label = codeOf(sg.type, sg.dir) + (sg.dir > 0 ? '▲' : '▼'), w = ctx.measureText(label).width + 8, h = 14;
       const cy = sg.dir > 0 ? y(b.l) + 20 + h / 2 + (nth - 1) * (h + 2) : y(b.h) - 20 - h / 2 - (nth - 1) * (h + 2);
       ctx.fillStyle = sg.dir > 0 ? C.up : C.down; ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(x(sg.i) - w / 2, cy - h / 2, w, h, 3); else ctx.rect(x(sg.i) - w / 2, cy - h / 2, w, h);
-      ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(label, x(sg.i), cy + .5);
+      const sx = x(v(sg.i));
+      if (ctx.roundRect) ctx.roundRect(sx - w / 2, cy - h / 2, w, h, 3); else ctx.rect(sx - w / 2, cy - h / 2, w, h);
+      ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(label, sx, cy + .5);
     }
     ctx.restore();
   }
@@ -1541,6 +1625,7 @@ function bind() {
   $('#structure-toggle').onchange = e => { S.showStructure = e.target.checked; commit(); };
   $('#steady').onchange = $('#steady-m').onchange = e => { S.steady = e.target.checked; commit(); };
   document.querySelectorAll('#game-seg button').forEach(b => b.onclick = () => setGame(b.dataset.game));
+  document.querySelectorAll('#tf-seg button').forEach(b => b.onclick = () => setTF(b.dataset.tf));
   $('#btn-up').onclick = () => makeCall(1);
   $('#btn-down').onclick = () => makeCall(-1);
   $('#btn-pass').onclick = () => makeCall(0);
@@ -1559,7 +1644,7 @@ function bind() {
     const ask = () => {
       wrap.innerHTML = '<span>Back to $10,000 and clear all trades, calls and win/loss?</span><button class="btn short" type="button">Reset</button><button class="btn" type="button">Keep playing</button>';
       const [yes, no] = wrap.querySelectorAll('button');
-      yes.onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game, ind: S.ind, steady: S.steady}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); resetShows.forEach(f => f()); toast('Reset: $10,000, no trades or calls'); };
+      yes.onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game, ind: S.ind, steady: S.steady, tf: S.tf}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); resetShows.forEach(f => f()); toast('Reset: $10,000, no trades or calls'); };
       no.onclick = show; no.focus();
     };
     return show;
@@ -1701,6 +1786,7 @@ function start(data) {
   }
   if (S.round && !legacy) { $('#loading').hidden = true; render(); }
   S.mode = 'm5';
+  ensure1m().then(() => { if (S.round) render(); }).catch(() => {});
   ensureData(S.mode).then(d => {
     DATA = d;
     if (legacy) {

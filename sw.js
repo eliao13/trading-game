@@ -1,7 +1,7 @@
-const VERSION = 'bt-555f9f8ffc';
+const VERSION = 'bt-ac3f3b0363';
 // The data files are in the install list too: on the first visit the page fetches them before
 // this worker is in control, so without this the app would not work offline until a second visit.
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'tape-5m-1.json', 'tape-5m-2.json', 'tape-5m-3.json', 'tape-5m-4.json', 'tape-5m-5.json', 'tape-5m-6.json'];
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'tape-5m-1.json', 'tape-5m-2.json', 'tape-1m-1.json', 'tape-1m-2.json'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
@@ -13,7 +13,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (/\/tape-5m-\d+\.json$/.test(url.pathname) || url.host.endsWith('gstatic.com') || url.host === 'fonts.googleapis.com') {
+  if (/\/tape-[15]m-\d+\.json$/.test(url.pathname) || url.host.endsWith('gstatic.com') || url.host === 'fonts.googleapis.com') {
     e.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => put(req, res))));
   } else if (url.origin === location.origin) {
     e.respondWith(fetch(req).then(res => put(req, res)).catch(() => caches.match(req).then(hit => hit || caches.match('index.html'))));
