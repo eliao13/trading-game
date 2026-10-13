@@ -1329,7 +1329,7 @@ function draw() {
   const ag = $('#axis-grab'), agTop = top + 'px', agH = priceH + 'px'; if (ag.style.top !== agTop || ag.style.height !== agH) { ag.style.top = agTop; ag.style.height = agH; }
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
-  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo};
+  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo, tY: H_ - bottom};
   const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
 
   // unseen future
@@ -1688,11 +1688,13 @@ function bind() {
     const ni = (i >= geom.first && i <= geom.last) ? i : null;
     hoverY = e.clientY - rect.top;
     const onAxis = mx > geom.left + geom.plotW && hoverY >= geom.top && hoverY <= geom.top + geom.priceH;
-    if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis ? 'ns-resize' : '';
+    const onTime = hoverY > geom.tY && mx >= geom.left && mx <= geom.left + geom.plotW;
+    if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis ? 'ns-resize' : onTime ? 'ew-resize' : '';
     if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
     draw();
   };
-  // Drag left/right to scroll. Drag the price axis up/down to squash or stretch the price scale; once it is
+  // Drag left/right to scroll. Drag the time axis left/right to squash or stretch the bars (the latest bar stays put).
+  // Drag the price axis up/down to squash or stretch the price scale; once it is
   // off auto, an up/down drag on the chart pans the price. Each drag locks to the direction it starts in.
   // Touch: on an auto scale a vertical swipe on the chart scrolls the page (touch-action: pan-y); once the scale is
   // manual the chart takes it (.vscale), and the #axis-grab strip always takes it. Phones never scroll the page.
@@ -1706,7 +1708,8 @@ function bind() {
     if (touches.size === 1) {
       const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top, g = geom;
       const onAxis = mx > g.left + g.plotW && my >= g.top && my <= g.top + g.priceH;
-      drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onAxis ? 'scale' : null, hi: g.hi, lo: g.lo};
+      const onTime = my > g.tY && mx >= g.left && mx <= g.left + g.plotW;
+      drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onAxis ? 'scale' : onTime ? 'tscale' : null, hi: g.hi, lo: g.lo, zoom0: zoom};
     }
   };
   const onMove = e => {
@@ -1730,6 +1733,8 @@ function bind() {
       const mid = (drag.hi + drag.lo) / 2, half = Math.max((drag.hi - drag.lo) / 2 * Math.exp(dy / 150), Math.abs(mid) * 1e-5 || 1e-5);
       vs = {hi: mid + half, lo: mid - half}; draw(); return;
     }
+    // Right stretches (fewer, wider bars), left squashes.
+    if (drag.dir === 'tscale') { zoomTo(drag.zoom0 * Math.exp(dx / 150), null); return; }
     if (drag.dir === 'v') { const d = dy / geom.priceH * (drag.hi - drag.lo); vs = {hi: drag.hi + d, lo: drag.lo + d}; draw(); return; }
     pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
   };
