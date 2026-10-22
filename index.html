@@ -62,7 +62,8 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .chart-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .ticker{font-family:var(--display);font-weight:800;font-size:20px;letter-spacing:.02em}
 .tag{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:4px;background:var(--future);color:var(--muted)}
-.ohlc{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.ohlc-line{display:flex;align-items:baseline;gap:4px 8px;flex:1 1 0;min-width:0;overflow:hidden}
+.ohlc{display:flex;flex-wrap:nowrap;gap:4px 12px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;min-width:0}
 .ohlc b{color:var(--ink);font-weight:500}
 .spacer{flex:1}
 .tf-seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
@@ -88,7 +89,11 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .my-tag{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .my-tag select{flex:1;min-width:0;min-height:32px;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
 .edge-by{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
-.tf-note{font:500 11px var(--mono);color:var(--muted);white-space:nowrap}
+.tf-note{font:500 11px var(--mono);color:var(--muted);white-space:nowrap;flex:none}
+.top>.intro2{display:none}
+/* Wide screens: the OHLC line grows into the free room on the head's one row, so the spacer goes.
+   Up to 1024 that line gets its own row instead, so the close never gets cut. */
+@media (min-width:1025px){.chart-head>.spacer{display:none}.chart-head{gap:8px 14px}}
 .loading .retry{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:0 16px}
 .pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
 .pan-latest{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
@@ -213,6 +218,43 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 /* The summary's buttons stay in view while its setup list scrolls. */
 .overlay .actions{position:sticky;bottom:-22px;margin:0 -24px -22px;padding:12px 24px 22px;background:var(--surface);border-top:1px solid var(--line)}
 
+/* ---------- tablet: compact header, How to play behind a button ---------- */
+@media (min-width:641px) and (max-width:1024px){
+  .top{flex-wrap:nowrap;align-items:center;gap:12px 24px}
+  .brand h1{font-size:26px}
+  .brand p,.reset-top{display:none}
+  .stats{flex-wrap:nowrap;gap:10px 20px;flex:1;justify-content:center}
+  .stat .v{font-size:16px}
+  .top>.intro2{display:flex;flex:none}
+  .ohlc-line{order:5;flex:1 0 100%;overflow-x:auto;scrollbar-width:none}
+  .ohlc-line::-webkit-scrollbar{display:none}
+  body.intro-open .top{flex-wrap:wrap}
+  body.intro-open .brand{flex:1 0 100%;order:5}
+  body.intro-open .brand p{display:block;max-width:none}
+  body.intro-open .intro-close{display:flex;margin-top:10px}
+}
+/* ---------- single column: trade panel in two columns, tables as cards ---------- */
+@media (max-width:860px){
+  .log table{min-width:0}
+  .log thead{display:none}
+  .log tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;padding:10px 0;border-bottom:1px solid var(--line)}
+  .log td{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border:0;padding:2px 0;white-space:normal}
+  .log td::before{content:attr(data-label);font:500 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .log td:first-child{grid-column:1/-1;font-family:var(--sans);font-weight:600}
+  .log td:first-child::before{content:none}
+}
+@media (min-width:641px) and (max-width:860px){
+  #trade-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+  #trade-panel>.hint{grid-column:1/-1}
+  .edge-table tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:24px}
+}
+/* Touch tablets: 44px targets (the primary pointer, so touch laptops used with a mouse stay dense). */
+@media (pointer:coarse) and (min-width:641px){
+  .btn,.seg button,select{min-height:44px}
+  .tf-seg button,.btn.small{min-height:36px}
+  .my-tag select{min-height:44px}
+}
+
 /* ---------- phone: chart on top, controls docked at the bottom, no page scroll while playing ---------- */
 @media (max-width:640px){
   html body{padding:0;margin:0}
@@ -237,8 +279,9 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .chart-card{flex:1;min-height:0;border-radius:0;border-left:0;border-right:0;box-shadow:none}
   .chart-head{padding:6px 16px;gap:4px 12px}
   .ticker{font-size:16px}
-  .ohlc{order:5;flex:1 0 100%;min-width:0;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;font-size:11.5px;scrollbar-width:none}
-  .ohlc::-webkit-scrollbar{display:none}
+  .ohlc-line{order:5;flex:1 0 100%;overflow-x:auto;scrollbar-width:none}
+  .ohlc-line::-webkit-scrollbar{display:none}
+  .ohlc{font-size:11.5px;overflow:visible}
   .chart-wrap{flex:1;height:auto;min-height:160px}
   .chart-wrap #chart{touch-action:none}
   .progress{border-radius:0}
@@ -251,7 +294,14 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .panel .pos-side{font-size:17px}
   .panel .pos-side{grid-column:1;grid-row:1}
   .panel .pos-pnl{grid-column:2;grid-row:1;font-size:17px}
-  .panel .pos-sub{font-size:11.5px;grid-column:1/-1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .panel .pos-sub{font-size:11.5px;grid-column:1/-1;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .ps-bars{display:none}
+  /* Review: no trade dock; the legend is one row of chips that scrolls sideways. */
+  body.reviewing .panel{display:none}
+  body.reviewing .review-ctl{flex:1 0 100%}
+  body.reviewing .legend{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none;gap:6px;padding:6px 16px}
+  body.reviewing .legend::-webkit-scrollbar{display:none}
+  body.reviewing .legend span{flex:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--surface)}
   #trade-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
   #trade-panel>.group{grid-column:1/-1}
   #trade-panel>.pos+.group{grid-column:auto;justify-content:center}
@@ -283,13 +333,6 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   body.stats-open .top{padding:0 4px}
   body.stats-open .stats-bar{display:flex;align-items:center;gap:10px}
   .stats-bar h2{font-family:var(--display);font-weight:800;font-size:24px;margin:0;flex:1}
-  .log table{min-width:0}
-  .log thead{display:none}
-  .log tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 16px;padding:10px 0;border-bottom:1px solid var(--line)}
-  .log td{display:flex;justify-content:space-between;align-items:baseline;gap:8px;border:0;padding:2px 0;white-space:normal}
-  .log td::before{content:attr(data-label);font:500 11px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-  .log td:first-child{grid-column:1/-1;font-family:var(--sans);font-weight:600}
-  .log td:first-child::before{content:none}
 
   .toast{top:calc(env(safe-area-inset-top,0px) + 160px);bottom:auto}
   .ind-pop{width:min(290px,calc(100vw - 32px))}
@@ -326,6 +369,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       <div class="stat"><span class="label" id="st-l4">Trades</span><span class="v" id="st-n">0</span></div>
       <div class="confirm reset-top" id="reset-top"></div>
     </div>
+    <button class="btn ghost intro2" id="btn-intro2" type="button">How to play</button>
   </header>
 
   <div class="main">
@@ -334,8 +378,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <span class="ticker" id="ticker">XXXX</span>
         <span class="tag" id="round-tag">Chart 1</span>
         <span class="tf-seg" id="tf-seg" role="group" aria-label="Timeframe"><button type="button" data-tf="5m">5m</button><button type="button" data-tf="1m">1m</button></span>
-        <span class="tf-note" id="tf-note" title="This day has no 1-min data, so the chart starts at 10:00 on 5-min bars" hidden>from 10:00</span>
-        <span class="ohlc num" id="ohlc"></span>
+        <span class="ohlc-line"><span class="tf-note" id="tf-note" title="This day has no 1-min data, so the chart starts at 10:00 on 5-min bars" hidden>from 10:00 ·</span><span class="ohlc num" id="ohlc"></span></span>
         <span class="spacer"></span>
         <details class="ind-menu" id="ind-menu">
           <summary class="btn small">Indicators<span class="ind-count" id="ind-count"></span></summary>
@@ -536,7 +579,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v46';
+const KEY = 'blindtape.v2', APP_V = 'v47';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
   {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
@@ -998,7 +1041,7 @@ function render() {
   $('#pos-side').textContent = p ? (p.side > 0 ? 'Long' : 'Short') : 'Flat';
   $('#pos-side').className = 'pos-side ' + (p ? (p.side > 0 ? 'up' : 'down') : '');
   const banked = p && p.banked || 0, scaled = p && ((p.adds && p.adds.length) || (p.trims && p.trims.length));
-  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  $('#pos-sub').innerHTML = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)}<span class="ps-bars"> · ${r.idx - p.entryIdx} bars</span> · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
   const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
 
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
@@ -1037,6 +1080,7 @@ function render() {
     $('#btn-up').disabled = $('#btn-down').disabled = $('#btn-pass').disabled = r.done || animating;
   }
   $('#review-ctl').hidden = !(r.done && r.review);
+  document.body.classList.toggle('reviewing', !!(r.done && r.review));
   $('#setup-legend').hidden = !(r.done && r.review && (S.showSetups !== false || S.showStructure !== false));
   if (r.done) renderHow(r);
 
@@ -1803,6 +1847,7 @@ function bind() {
   $('#btn-stats-back').onclick = () => { body.classList.remove('stats-open'); draw(); };
   $('#btn-intro').onclick = () => { body.classList.remove('stats-open'); body.classList.add('intro-open'); };
   $('#btn-intro-close').onclick = () => body.classList.remove('intro-open');
+  $('#btn-intro2').onclick = () => body.classList.toggle('intro-open');
   $('#btn-setups').onclick = () => { const open = $('#overlay .box').classList.toggle('setups-open'); $('#btn-setups').setAttribute('aria-expanded', String(open)); };
   // Each table cell carries its column name, shown as a label when the rows stack on a phone.
   for (const id of ['#edge-body', '#log-body']) {
