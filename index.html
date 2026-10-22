@@ -411,11 +411,11 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </div>
 
       <div class="group">
-        <span class="label">Size (share of equity)</span>
-        <div class="seg" id="size-seg" role="group" aria-label="Position size">
-          <button type="button" data-i="0">25%</button>
-          <button type="button" data-i="1">50%</button>
-          <button type="button" data-i="2">100%</button>
+        <span class="label">Risk per trade (share of equity)</span>
+        <div class="seg" id="size-seg" role="group" aria-label="Risk per trade">
+          <button type="button" data-i="0">0.1%</button>
+          <button type="button" data-i="1">0.25%</button>
+          <button type="button" data-i="2">0.5%</button>
         </div>
       </div>
 
@@ -446,7 +446,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <label class="toggle steady-toggle"><input type="checkbox" id="steady"> Steady pace: every bar takes the same time in Play</label>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes: drag its line to move it, or press X to remove it. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
+      <p class="hint">Orders fill at the last close. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes, and at least one average 5-min bar away. The size is set so that hitting it loses the chosen share of your equity, within 4× your equity in total (intraday buying power). Drag the stop's line to move it, or press X to remove it. Pressing the opposite side reverses your position. Pressing your own side again adds the same risk again, measured to your current stop, and Trim ½ sells half. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -480,7 +480,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </table>
     </div>
     <p class="foot" id="edge-summary" hidden></p>
-    <p class="foot"><b>Avg R</b> is the average result in units of the risk you took at entry (entry to stop), so −1R is a full stop-out. <b>Profit factor</b> is total gains over total losses; above 1 makes money. <b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
+    <p class="foot"><b>Avg R</b> is the average result in units of the risk you took at entry (entry to stop), so −1R is a full stop-out. <b>Profit factor</b> is the dollars won over the dollars lost (for calls, the moves); above 1 makes money. <b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
   </section>
 
   <section class="card log" aria-label="Trade history">
@@ -503,7 +503,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
 <script>
 (() => {
-const START_CASH = 10000, HIST = 90, FWD = 80, SIZES = [0.25, 0.5, 1];
+const START_CASH = 10000, HIST = 90, FWD = 80, RISKS = [0.001, 0.0025, 0.005], BP = 4;   // BP: intraday buying power, a multiple of equity
 // 5-min rounds: previous session (78 bars) + first 30 minutes of today as history, then trade to the close.
 // Days that also have 1-min data start at the open (09:30) and can be viewed on either timeframe. DAY and BM
 // describe the view being shown (bars per session, minutes per bar); useTF sets them from the round.
@@ -558,7 +558,18 @@ const fmtDate = day => new Date(day * 864e5).toLocaleDateString('en-US', {month:
 
 function freshState() { return {cash: START_CASH, trades: [], calls: [], roundNo: 0, sizeIdx: 1, showMA: false, ind: {vol: true}, round: null, recent: [], showSetups: true, showStructure: true, mode: 'm5', game: 'trade', paV: 1}; }
 function load() { try { const j = localStorage.getItem(KEY); if (j) { const s = JSON.parse(j); if (s && s.round && s.round.bars) return s; } } catch (e) {} return null; }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+// KEY.rev counts saves. A page whose count is behind another copy's adopts that copy's progress instead of
+// writing over it; open copies also pick up each other's saves as they happen.
+const REV = KEY + '.rev';
+let rev = 0;
+const storedRev = () => { try { return +localStorage.getItem(REV) || 0; } catch (e) { return 0; } };
+function adopt(n) { const s = load(); if (!s) return false; stopPlay(); S = s; rev = n; hoverI = null; hoverY = null; edgeKey = null; return true; }
+function save() {
+  const cur = storedRev();
+  if (cur > rev && adopt(cur)) { toast('Picked up your progress from another tab'); return; }
+  try { localStorage.setItem(KEY, JSON.stringify(S)); rev = cur + 1; localStorage.setItem(REV, rev); } catch (e) {}
+}
+addEventListener('storage', e => { if (e.key === REV && S && adopt(+e.newValue || 0)) render(); });
 
 // data.json: per symbol {s, n, d (day deltas), o, h, l, c, v}. Days are rebuilt into absolute day numbers.
 // tape-5m-N.json (split to stay under the per-file size limit): per symbol {s, n, days: [[d, k, g, P, V]]}, each day exactly 78 bars from 9:30 ET, decoded here
@@ -740,13 +751,16 @@ function newRound5m() {
   S.recent = S.recent || [];
   // A day has 1-min data if it and the session before it are both in the 1-min files.
   const ok1 = (x, j) => { const m = M1 && M1.get(x.s); return !!(m && m.has(x.days[j].d) && m.has(x.days[j - 1].d)); };
-  const want1 = S.tf === '1m' && !!M1;
-  let x, j, tries = 0;
+  S.played = S.played || {};
+  let want1 = S.tf === '1m' && !!M1, x, j, tries = 0, n = 0;
   for (;;) {
+    // After many misses, played days are allowed again, and then days without 1-min data.
+    n++; const fresh = n <= 400; if (n > 800) want1 = false;
     let k; do { k = Math.floor(Math.random() * DATA.length); } while (S.recent.includes(DATA[k].s) && ++tries < 20);
     x = DATA[k];
+    const seen = S.played[x.s] || [];
     // g marks a day whose previous session is missing from the data, so it has no true prior day to show.
-    const js = []; for (let q = 1; q < x.days.length; q++) if (!x.days[q].g && (!want1 || ok1(x, q))) js.push(q);
+    const js = []; for (let q = 1; q < x.days.length; q++) if (!x.days[q].g && (!want1 || ok1(x, q)) && !(fresh && seen.includes(x.days[q].d))) js.push(q);
     if (js.length) { j = js[Math.floor(Math.random() * js.length)]; break; }
   }
   const pd = x.days[j - 1], td = x.days[j], m1 = ok1(x, j) ? M1.get(x.s) : null;
@@ -758,6 +772,7 @@ function newRound5m() {
   } return out; };
   const b5 = mk([pd, td]), hist5 = m1 ? DAY5 : M5_HIST;
   S.recent = [x.s, ...S.recent].slice(0, 8);
+  (S.played[x.s] = S.played[x.s] || []).push(td.d);
   S.roundNo++;
   S.round = {
     mode: 'm5', ticker: x.s.split(':')[1], name: x.n, scale, from: td.d, to: td.d, prevDay: pd.d,
@@ -795,6 +810,11 @@ function defaultStop(r, side) {
   useTF(r);
   const n = 15 / BM, px = r.bars[r.idx].c; let st = side > 0 ? Infinity : -Infinity;
   for (let i = Math.max(0, r.idx - n + 1); i <= r.idx; i++) st = side > 0 ? Math.min(st, r.bars[i].l) : Math.max(st, r.bars[i].h);
+  // At least one average 5-min bar range (the last hour of complete 5-min bars) from price.
+  const b5 = bars5(r), i5 = to5(r, r.idx), k0 = Math.max(0, i5 - 11); let rg = 0;
+  for (let k = k0; k <= i5; k++) rg += b5[k].h - b5[k].l;
+  rg /= i5 - k0 + 1 || 1;
+  st = side > 0 ? Math.min(st, px - rg) : Math.max(st, px + rg);
   return clampStop(st, side, px);
 }
 // The fill if the stop is reached on view bar i, as {px, m} (m = the minute, on a 1-min day), else null.
@@ -817,6 +837,8 @@ function reveal(r, to) {
   }
   return false;
 }
+// Size by risk: a fill at the stop loses the chosen share of equity, within the room left under BP× buying power.
+const riskQty = (px, st, room) => Math.floor(Math.min(equity() * RISKS[S.sizeIdx] / Math.abs(px - st), room));
 function toggleStop() {
   const r = R(), p = r && r.pos; if (!p || r.done) return;
   if (p.stop != null) { p.stop = null; toast('Stop removed'); }
@@ -830,11 +852,10 @@ function openPos(side) {
   const r = R(); if (!r || r.done) return;
   if (r.pos && r.pos.side === side) return addPos();
   if (r.pos) closePos(true);
-  const qty = Math.floor(equity() * SIZES[S.sizeIdx] / price());
+  const st = defaultStop(r, side), px = price(), qty = riskQty(px, st, BP * equity() / px);
   if (qty < 1) { toast('Not enough equity for one share'); return; }
-  const st = defaultStop(r, side);
-  r.pos = scaleOf({side, qty, entry: price(), entryIdx: r.idx, stop: st, stop0: st, risk: qty * Math.abs(price() - st)});
-  toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(price()) + ' · stop ' + fmtP(st));
+  r.pos = scaleOf({side, qty, entry: px, entryIdx: r.idx, stop: st, stop0: st, risk: qty * Math.abs(px - st)});
+  toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(px) + ' · risking ' + fmt$(r2(r.pos.risk)));
   commit();
 }
 // Scaling bookkeeping; a position opened before adds and trims existed gets it on first use.
@@ -844,11 +865,11 @@ function scaleOf(p) {
 }
 function addPos() {
   const r = R(), p = scaleOf(r.pos), px = price();
-  const room = Math.floor(2 * equity() / px) - p.qty, qty = Math.min(Math.floor(equity() * SIZES[S.sizeIdx] / px), room);
-  if (qty < 1) { toast(room < 1 ? 'At the 2× buying-power limit' : 'Not enough equity for one share'); return; }
+  const st = p.stop != null ? p.stop : defaultStop(r, p.side), room = Math.floor(BP * equity() / px) - p.qty, qty = riskQty(px, st, room);
+  if (qty < 1) { toast(room < 1 ? 'At the ' + BP + '× buying-power limit' : 'Not enough equity for one share'); return; }
   p.entry = (p.entry * p.qty + px * qty) / (p.qty + qty); p.qty += qty;
   p.bought += qty; p.cost += qty * px; p.adds.push(r.idx);
-  p.risk = (p.risk || 0) + qty * Math.abs(px - (p.stop != null ? p.stop : defaultStop(r, p.side)));
+  p.risk = (p.risk || 0) + qty * Math.abs(px - st);
   toast('Added ' + qty + ' @ ' + fmtP(px) + ' · avg ' + fmtP(p.entry));
   commit();
 }
@@ -1008,10 +1029,10 @@ function render() {
       $('#ov-dl').innerHTML = `<dt>Stock moved</dt>${moveDd}<dt>Your calls</dt><dd>${rcHits} of ${rc.length} right</dd>` +
         `<dt>Avg move your way</dt><dd><span class="${cls(avgYour)}">${rc.length ? fmtPct(avgYour) : '–'}</span></dd><dt>Always up would be</dt><dd>${upHits} of ${rc.length} right</dd>`;
     } else {
-      const bh = r2(Math.floor(r.startEq * SIZES[S.sizeIdx] / start) * (endP - start));
+      const bh = r2(Math.floor(r.startEq / start) * (endP - start));
       $('#ov-title').textContent = rt.length === 0 ? 'You sat this one out' : rp > 0 ? 'You finished ahead' : rp < 0 ? 'The tape won this one' : 'Broke even';
       $('#ov-dl').innerHTML = `<dt>Stock moved</dt>${moveDd}<dt>Your P&amp;L this chart</dt><dd><span class="${cls(rp)}">${fmt$(rp, true)}</span></dd>` +
-        `<dt>Trades</dt><dd>${rt.length}</dd><dt>Buy &amp; hold would be</dt><dd><span class="${cls(bh)}">${fmt$(bh, true)}</span></dd>`;
+        `<dt>Trades</dt><dd>${rt.length}</dd><dt>Buy &amp; hold, all equity</dt><dd><span class="${cls(bh)}">${fmt$(bh, true)}</span></dd>`;
     }
     renderSetupSummary(r);
     ov.hidden = !!r.review;
@@ -1264,11 +1285,13 @@ function edgeStats(ts) {
     if (avg > s + 1e-12) beat++; else if (Math.abs(avg - s) <= 1e-12) beat += .5;
   }
   const sum = a => a.reduce((x, y) => x + y, 0), wins = mine.filter(x => x > 0), losses = mine.filter(x => x < 0), sw = sum(wins), sl = -sum(losses);
-  const Rs = ts.filter(t => t.R != null).map(t => t.R);
+  const Rs = ts.filter(t => t.R != null).map(t => t.R), dl = ts.every(t => t.qty != null) ? ts.map(t => t.pnl) : mine;
+  const gw = sum(dl.filter(x => x > 0)), gl = -sum(dl.filter(x => x < 0));
   return {n, win: wins.length / n, avg, longAvg, pnl: r2(ts.reduce((a, t) => a + t.pnl, 0)), pct: beat / N,
-    pf: sl > 0 ? sw / sl : sw > 0 ? Infinity : null, avgWin: wins.length ? sw / wins.length : null, avgLoss: losses.length ? -sl / losses.length : null,
+    pf: gl > 0 ? gw / gl : gw > 0 ? Infinity : null, avgWin: wins.length ? sw / wins.length : null, avgLoss: losses.length ? -sl / losses.length : null,
     avgR: Rs.length ? sum(Rs) / Rs.length : null, nR: Rs.length};
 }
+const BEAT_MIN = 20;   // fewer than this and the coin-flip share swings too much to show
 let edgeKey = null, callKey = null, callCache = null;
 function callStats() {
   const cs = S.calls, c0 = cs[0], key = cs.length + '|' + (c0 ? [c0.round, c0.entryIdx].join('-') : '');
@@ -1296,7 +1319,7 @@ function renderEdge() {
   const pctTxt = x => Math.round(x * 100) + '%', fmtPF = x => x == null ? '–' : x === Infinity ? '∞' : x.toFixed(2);
   const row = (label, st, total) => `<tr${total ? ' class="total"' : ''}><td>${label}</td><td>${st.n}</td><td>${pctTxt(st.win)}</td>` +
     `<td class="${cls(st.avg)}">${fmtPct(st.avg)}</td><td class="${call || st.avgR == null ? '' : cls(st.avgR)}">${call ? '' : st.avgR == null ? '–' : fmtR(st.avgR)}</td><td>${fmtPF(st.pf)}</td><td class="${cls(st.longAvg)}">${fmtPct(st.longAvg)}</td><td class="${call ? '' : cls(st.pnl)}">${call ? '' : fmt$(st.pnl, true)}</td>` +
-    `<td class="${st.n >= 10 ? (st.pct >= .95 ? 'up' : st.pct <= .05 ? 'down' : '') : ''}">${st.n >= 5 ? pctTxt(st.pct) : '–'}</td></tr>`;
+    `<td class="${st.n >= BEAT_MIN ? (st.pct >= .95 ? 'up' : st.pct <= .05 ? 'down' : '') : ''}">${st.n >= BEAT_MIN ? pctTxt(st.pct) : '–'}</td></tr>`;
   const autoTs = ts.filter(t => t.auto && t.rules === 2), oldTs = ts.filter(t => t.auto && t.rules !== 2), handTs = ts.filter(t => !t.auto);
   const m5Ts = autoTs.filter(t => t.mode === 'm5'), dailyTs = ts.filter(t => (t.mode || 'daily') === 'daily');
   const rows = TAGS.map(tg => ({tg, list: m5Ts.filter(t => (t.tag || 'none') === tg.id)}))
@@ -1325,7 +1348,9 @@ function renderEdge() {
   let b, t;
   if (all.n < 30) {
     b = ['neutral', 'Need more ' + noun + 's'];
-    t = `${all.n} ${noun}${all.n === 1 ? '' : 's'} so far. Right now your calls beat ${beatPct}% of coin-flip runs, but with this few ${noun}s that number swings a lot. Aim for 30 for a first read and 100 before trusting it.`;
+    t = all.n < BEAT_MIN
+      ? `${all.n} ${noun}${all.n === 1 ? '' : 's'} so far. The comparison with coin-flip runs starts at ${BEAT_MIN} ${noun}s; aim for 100 before trusting it.`
+      : `${all.n} ${noun}s so far. Right now your direction beat ${beatPct}% of coin-flip runs, but with this few ${noun}s that number swings a lot. Aim for 30 for a first read and 100 before trusting it.`;
   } else if (all.pct >= .95) {
     b = ['long', 'Beating random'];
     const alw = call ? 'always calling up' : 'always being long';
@@ -1333,7 +1358,7 @@ function renderEdge() {
       (all.avg <= all.longAvg ? ` But ${alw} did as well, so the market drifting up may explain it.` : ` ${alw[0].toUpperCase() + alw.slice(1)} did worse, so it isn’t just the market drifting up.`);
   } else if (all.pct <= .05) {
     b = ['short', 'Worse than random'];
-    t = `Your calls did worse than ${100 - beatPct}% of coin-flip runs. Your reads point the wrong way more often than chance would, so check which setup is dragging.`;
+    t = `Your direction did worse than ${100 - beatPct}% of coin-flip runs. Your reads point the wrong way more often than chance would, so check which setup is dragging.`;
   } else {
     b = ['neutral', 'Within luck'];
     t = `A coin flip on the same entries and exits does as well as you ${100 - beatPct}% of the time, so these results can’t yet be told apart from luck.`;
@@ -1871,6 +1896,7 @@ function bind() {
 const realRound = r => !!(r && r.bars && r.name && r.scale && r.from != null && r.to != null);
 function start(data) {
   if (!(data && data.S) && !load()) document.body.classList.add('intro-open');
+  rev = storedRev();
   S = (data && data.S) || load() || freshState();
   S.calls = S.calls || [];
   // One-time switch to plain candles for the price-action version.
