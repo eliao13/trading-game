@@ -84,6 +84,9 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 /* On touch screens a strip over the stop line takes its drags, so they move the stop instead of scrolling. */
 .stop-grab{position:absolute;left:0;height:28px;display:none;touch-action:none;cursor:ns-resize}
 @media (any-pointer:coarse){.stop-grab.on{display:block}}
+.stop-edit{position:absolute;z-index:6;width:96px;font:600 12px var(--mono);padding:3px 6px;border:1px solid var(--ink);border-radius:4px;background:var(--surface);color:var(--ink)}
+.tf-note{font:500 11px var(--mono);color:var(--muted);white-space:nowrap}
+.loading .retry{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:0 16px}
 .pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
 .pan-latest{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
 .pan-latest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -328,6 +331,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <span class="ticker" id="ticker">XXXX</span>
         <span class="tag" id="round-tag">Chart 1</span>
         <span class="tf-seg" id="tf-seg" role="group" aria-label="Timeframe"><button type="button" data-tf="5m">5m</button><button type="button" data-tf="1m">1m</button></span>
+        <span class="tf-note" id="tf-note" title="This day has no 1-min data, so the chart starts at 10:00 on 5-min bars" hidden>from 10:00</span>
         <span class="ohlc num" id="ohlc"></span>
         <span class="spacer"></span>
         <details class="ind-menu" id="ind-menu">
@@ -365,6 +369,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
         <div class="axis-grab" id="axis-grab" aria-hidden="true"></div>
         <div class="stop-grab" id="stop-grab" aria-hidden="true"></div>
+        <input class="stop-edit" id="stop-edit" type="text" inputmode="decimal" autocomplete="off" aria-label="Stop price" hidden>
         <div class="pan-btns">
           <button class="pan-latest" id="btn-auto" type="button" hidden aria-label="Fit the price scale to the bars again">Auto</button>
           <button class="pan-latest" id="btn-zoom-reset" type="button" hidden aria-label="Reset the chart zoom">Reset zoom</button>
@@ -446,7 +451,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <label class="toggle steady-toggle"><input type="checkbox" id="steady"> Steady pace: every bar takes the same time in Play</label>
       </div>
 
-      <p class="hint">Orders fill at the last close. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes, and at least one average 5-min bar away. The size is set so that hitting it loses the chosen share of your equity, within 4× your equity in total (intraday buying power). Drag the stop's line to move it, or press X to remove it. Pressing the opposite side reverses your position. Pressing your own side again adds the same risk again, measured to your current stop, and Trim ½ sells half. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
+      <p class="hint">Orders fill at the last close. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes, and at least one average 5-min bar away. The size is set so that hitting it loses the chosen share of your equity, within 4× your equity in total (intraday buying power). Drag the stop's line or label to move it, double-click it (double-tap on touch) to type a price, or press X to remove it. Pressing the opposite side reverses your position. Pressing your own side again adds the same risk again, measured to your current stop, and Trim ½ sells half. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -497,6 +502,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </table>
     </div>
     <p class="empty" id="log-empty">No trades yet. Pick a side on the chart above.</p>
+    <p class="foot" id="app-ver"></p>
   </section>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" style="opacity:0"></div>
@@ -523,7 +529,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2';
+const KEY = 'blindtape.v2', APP_V = 'v44';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
   {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
@@ -996,6 +1002,7 @@ function render() {
     b.classList.toggle('na', b.dataset.tf === '1m' && !r.b1);
     b.title = b.dataset.tf === '1m' && !r.b1 ? 'No 1-min data for this day' : '';
   });
+  $('#tf-note').hidden = !!r.b1 || modeOf(r) !== 'm5';
   if (call) {
     const lc = r.lastCall, rc = S.calls.filter(c => c.round === S.roundNo), rh = rc.filter(c => c.hit).length;
     const callsLeft = r.done ? 0 : Math.floor((r.end - r.idx) / CALL_N);
@@ -1371,6 +1378,30 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 function niceStep(range, count) { const raw = range / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
 function sma(bars, i, n) { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += bars[k].c; return s / n; }
 let geom = null, pan = 0, panKey = null, zoom = 1;
+// On the stop line (within tol px) or its label.
+function onStopAt(mx, my, tol) {
+  const g = geom; if (!g || g.stopY == null) return false;
+  const L = g.stopLbl;
+  return (Math.abs(my - g.stopY) <= tol && mx >= g.left && mx <= g.left + g.plotW) || !!(L && mx >= L.x0 && mx <= L.x1 && my >= L.y0 && my <= L.y1);
+}
+// Type a stop price: a box over the stop label. Enter or leaving the box sets it, Escape cancels.
+function editStop() {
+  const r = R(), p = r && r.pos; if (!p || r.done || p.stop == null || !geom || geom.stopY == null) return;
+  const inp = $('#stop-edit'); stopPlay();
+  inp.value = p.stop.toFixed(2); inp.style.left = (geom.left + 4) + 'px';
+  inp.style.top = (geom.stopY + (p.side > 0 ? 4 : -28)) + 'px';
+  inp.hidden = false; inp.focus(); inp.select();
+}
+function closeStopEdit(ok) {
+  const inp = $('#stop-edit'); if (inp.hidden) return;
+  inp.hidden = true;
+  const r = R(), p = r && r.pos; if (!ok || !p || r.done) return;
+  const v = parseFloat(inp.value.replace(/[$,s]/g, ''));
+  if (!(v > 0)) { toast('Not a price'); return; }
+  p.stop = clampStop(v, p.side, price());
+  toast(p.stop !== r2(v) ? 'The stop has to be ' + (p.side > 0 ? 'below' : 'above') + ' the last close · set to ' + fmtP(p.stop) : 'Stop at ' + fmtP(p.stop));
+  commit();
+}
 // Manual price scale {hi, lo}; null = auto-fit to the visible bars. Back to auto on every new chart.
 let vs = null, vsKey = null;
 const slotsFor = (base, z, maxSlots) => Math.max(12, Math.min(maxSlots, Math.round(base / z)));
@@ -1428,7 +1459,7 @@ function draw() {
   const ag = $('#axis-grab'), agTop = top + 'px', agH = priceH + 'px'; if (ag.style.top !== agTop || ag.style.height !== agH) { ag.style.top = agTop; ag.style.height = agH; }
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
-  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo, tY: H_ - bottom, stopY: null};
+  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo, tY: H_ - bottom, stopY: null, stopLbl: null};
   const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
 
   // unseen future
@@ -1599,7 +1630,9 @@ function draw() {
       const sy = Math.round(y(st)) + .5, loss = r2((r.pos.banked || 0) + r.pos.side * r.pos.qty * (st - r.pos.entry));
       ctx.strokeStyle = C.ink; ctx.globalAlpha = .8; ctx.setLineDash([6, 3]); ctx.beginPath(); ctx.moveTo(left, sy); ctx.lineTo(left + plotW, sy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
       ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = r.pos.side > 0 ? 'top' : 'bottom'; ctx.fillStyle = C.ink;
-      ctx.fillText('STOP ' + fmt$(loss, true), left + 4, sy + (r.pos.side > 0 ? 3 : -3));
+      const lbl = 'STOP ' + fmt$(loss, true), lw = ctx.measureText(lbl).width;
+      ctx.fillText(lbl, left + 4, sy + (r.pos.side > 0 ? 3 : -3));
+      geom.stopLbl = {x0: left, x1: left + 8 + lw, y0: r.pos.side > 0 ? sy : sy - 18, y1: r.pos.side > 0 ? sy + 18 : sy};
       axisTag(ctx, st, sy, C.ink, C.surface, left + plotW, axisW, false);
       geom.stopY = sy;
     }
@@ -1801,7 +1834,7 @@ function bind() {
     hoverY = e.clientY - rect.top;
     const onAxis = mx > geom.left + geom.plotW && hoverY >= geom.top && hoverY <= geom.top + geom.priceH;
     const onTime = hoverY > geom.tY && mx >= geom.left && mx <= geom.left + geom.plotW;
-    const onStop = geom.stopY != null && Math.abs(hoverY - geom.stopY) <= 6 && mx >= geom.left && mx <= geom.left + geom.plotW;
+    const onStop = onStopAt(mx, hoverY, 6);
     if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis || onStop ? 'ns-resize' : onTime ? 'ew-resize' : '';
     if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
     draw();
@@ -1822,7 +1855,7 @@ function bind() {
       const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top, g = geom;
       const onAxis = mx > g.left + g.plotW && my >= g.top && my <= g.top + g.priceH;
       const onTime = my > g.tY && mx >= g.left && mx <= g.left + g.plotW;
-      const onStop = g.stopY != null && Math.abs(my - g.stopY) <= (e.pointerType === 'mouse' ? 6 : 14) && mx >= g.left && mx <= g.left + g.plotW;
+      const onStop = onStopAt(mx, my, e.pointerType === 'mouse' ? 6 : 14);
       drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onStop ? 'stop' : onAxis ? 'scale' : onTime ? 'tscale' : null, hi: g.hi, lo: g.lo, zoom0: zoom};
     }
   };
@@ -1858,7 +1891,13 @@ function bind() {
     if (drag.dir === 'v') { const d = dy / geom.priceH * (drag.hi - drag.lo); vs = {hi: drag.hi + d, lo: drag.lo + d}; draw(); return; }
     pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
   };
-  const endDrag = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); if (drag && drag.moved && drag.dir === 'stop') commit(); drag = null; };
+  // Touch has no reliable dblclick, so two quick taps on the stop open the price box.
+  let stopTap = 0;
+  const endDrag = e => {
+    if (drag && !drag.moved && drag.dir === 'stop' && e.type === 'pointerup' && e.pointerType !== 'mouse') {
+      if (e.timeStamp - stopTap < 400) { stopTap = 0; editStop(); } else stopTap = e.timeStamp;
+    }
+    touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); if (drag && drag.moved && drag.dir === 'stop') commit(); drag = null; };
   // The axis strip shares the chart's handlers; a drag that starts there is captured by the chart.
   for (const el of [cv, $('#axis-grab'), $('#stop-grab')]) {
     el.addEventListener('pointerdown', onDown); el.addEventListener('pointermove', onMove);
@@ -1874,7 +1913,15 @@ function bind() {
     e.preventDefault(); wheelAcc += d / geom.sp;
     const n = Math.trunc(wheelAcc); if (n) { wheelAcc -= n; panBy(n); }
   }, {passive: false});
-  cv.addEventListener('dblclick', () => { zoom = 1; vs = null; panBy(-pan); });
+  cv.addEventListener('dblclick', e => {
+    const rect = cv.getBoundingClientRect();
+    if (onStopAt(e.clientX - rect.left, e.clientY - rect.top, 6)) { editStop(); return; }
+    zoom = 1; vs = null; panBy(-pan);
+  });
+  const se = $('#stop-edit');
+  se.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); closeStopEdit(true); } else if (e.key === 'Escape') { e.preventDefault(); closeStopEdit(false); } });
+  se.addEventListener('blur', () => closeStopEdit(true));
+  $('#stop-grab').addEventListener('dblclick', editStop);
   $('#btn-auto').onclick = () => { vs = null; draw(); };
   $('#btn-latest').onclick = () => panBy(-pan);
   $('#btn-zoom-reset').onclick = () => { zoom = 1; draw(); };
@@ -1912,8 +1959,16 @@ function start(data) {
   }
   if (S.round && !legacy) { $('#loading').hidden = true; render(); }
   S.mode = 'm5';
+  $('#app-ver').textContent = 'Blind Tape ' + APP_V;
+  const loadFail = msg => {
+    const l = $('#loading'), box = document.createElement('div'), b = document.createElement('button');
+    box.className = 'retry'; box.textContent = msg; b.className = 'btn small'; b.type = 'button'; b.textContent = 'Retry';
+    b.onclick = () => location.reload(); box.append(b); l.replaceChildren(box);
+  };
+  const slow = setTimeout(() => { if (!$('#loading').hidden) loadFail('Price history is taking longer than usual to load.'); }, 20000);
   ensure1m().then(() => { if (S.round) render(); }).catch(() => {});
   ensureData(S.mode).then(d => {
+    clearTimeout(slow);
     DATA = d;
     if (legacy) {
       // Settle any open simulated trade at its last price, then move to a real chart.
@@ -1924,7 +1979,7 @@ function start(data) {
     if (!S.round) newRound();
     $('#loading').hidden = true; commit();
   }).catch(e => {
-    $('#loading').textContent = 'Could not load price history (' + e.message + '). Reload the page to try again.';
+    clearTimeout(slow); loadFail('Could not load price history (' + e.message + ').');
   });
 }
 if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
