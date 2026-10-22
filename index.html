@@ -85,6 +85,9 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .stop-grab{position:absolute;left:0;height:28px;display:none;touch-action:none;cursor:ns-resize}
 @media (any-pointer:coarse){.stop-grab.on{display:block}}
 .stop-edit{position:absolute;z-index:6;width:96px;font:600 12px var(--mono);padding:3px 6px;border:1px solid var(--ink);border-radius:4px;background:var(--surface);color:var(--ink)}
+.my-tag{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.my-tag select{flex:1;min-width:0;min-height:32px;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:2px 6px}
+.edge-by{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
 .tf-note{font:500 11px var(--mono);color:var(--muted);white-space:nowrap}
 .loading .retry{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:0 16px}
 .pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
@@ -346,6 +349,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <label><input type="checkbox" data-ind="bb"> Bollinger Bands 20, 2 <i class="sw" style="--c:var(--bb)"></i></label>
             <label><input type="checkbox" data-ind="pd"> Prior-day high / low / close <i class="sw" style="--c:var(--ink)"></i></label>
             <label><input type="checkbox" data-ind="or"> Opening range, first 30 min <i class="sw" style="--c:var(--accent)"></i></label>
+            <span class="label">Price scale</span>
+            <label><input type="checkbox" id="fit-day"> Fit the whole day so far</label>
             <span class="label">Below the chart</span>
             <label><input type="checkbox" data-ind="vol"> Volume</label>
             <label><input type="checkbox" data-ind="rsi"> RSI 14</label>
@@ -433,6 +438,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
           <button class="btn" id="btn-close" type="button">Close <kbd>C</kbd></button>
         </div>
         <button class="btn ghost" id="btn-stop" type="button">Remove stop <kbd>X</kbd></button>
+        <label class="my-tag">Your setup <select id="my-tag" aria-label="Your setup for this trade"><option value="">Not tagged</option><option value="breakout">Breakout</option><option value="pullback">Pullback</option><option value="trend">Trend continuation</option><option value="reversal">Reversal</option><option value="range">Range fade</option><option value="orb">Opening-range break</option><option value="pdhl">Prior-day high/low break</option><option value="vwap">VWAP reclaim/reject</option><option value="bos">Break of structure</option><option value="failed">Failed breakout</option><option value="retest">Retest</option><option value="hl">Higher low / lower high</option><option value="inside">Inside-bar breakout</option><option value="none">No setup</option></select></label>
       </div>
 
       <div class="group">
@@ -476,7 +482,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   </div>
 
   <section class="card log" aria-label="Your edge by setup">
-    <div class="log-head"><h2 id="edge-title">Your edge by setup</h2></div>
+    <div class="log-head"><h2 id="edge-title">Your edge by setup</h2>
+      <span class="edge-by" id="edge-by-wrap">Group by <span class="tf-seg" id="edge-by" role="group" aria-label="Group trades by"><button type="button" data-by="auto">Detected</button><button type="button" data-by="mine">Your tag</button></span></span></div>
     <div class="verdict"><span class="pill neutral" id="edge-badge">No trades yet</span><p id="edge-text"></p></div>
     <div class="table-scroll">
       <table class="edge-table">
@@ -529,7 +536,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v45';
+const KEY = 'blindtape.v2', APP_V = 'v46';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
   {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
@@ -868,6 +875,7 @@ function openPos(side) {
   const st = defaultStop(r, side), px = price(), qty = riskQty(px, st, BP * equity() / px);
   if (qty < 1) { toast('Not enough equity for one share'); return; }
   r.pos = scaleOf({side, qty, entry: px, entryIdx: r.idx, stop: st, stop0: st, risk: qty * Math.abs(px - st)});
+  if (S.nextTag) { r.pos.myTag = S.nextTag; S.nextTag = null; }
   toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(px) + ' · risking ' + fmt$(r2(r.pos.risk)));
   commit();
 }
@@ -908,6 +916,7 @@ function closePos(quiet, px = price(), stopMin) {
   excursion(p, px, px);
   if (p.risk > 0) { t.risk = r2(p.risk); t.R = +(total / p.risk).toFixed(2); t.mfeR = +(p.mfe / p.risk).toFixed(2); t.maeR = +(p.mae / p.risk).toFixed(2); }
   if (p.stop != null && p.stop !== p.stop0) t.stopX = p.stop;
+  if (p.myTag) t.myTag = p.myTag;
   if (stopMin !== undefined) t.stopped = true;
   if (p.mi || stopMin != null) t.mi = Object.assign({}, p.mi, stopMin != null ? {x: stopMin} : {});
   S.trades.unshift(t);
@@ -995,6 +1004,8 @@ function render() {
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
   $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
   $('#btn-close').disabled = r.done || !p; $('#btn-trim').disabled = r.done || !p;
+  // Your setup: tags the open trade, or the next one when you're flat.
+  const mt = $('#my-tag'), mv = (p ? p.myTag : S.nextTag) || ''; if (mt.value !== mv) mt.value = mv; mt.disabled = !!r.done;
   $('#btn-stop').disabled = r.done || !p; $('#btn-stop').innerHTML = (p && p.stop == null ? 'Add stop' : 'Remove stop') + ' <kbd>X</kbd>';
   $('#btn-long').innerHTML = (p && p.side > 0 ? 'Add' : 'Long') + ' <kbd>B</kbd>';
   $('#btn-short').innerHTML = (p && p.side < 0 ? 'Add' : 'Short') + ' <kbd>S</kbd>';
@@ -1006,6 +1017,7 @@ function render() {
   $('#setups-toggle').checked = S.showSetups !== false;
   $('#structure-toggle').checked = S.showStructure !== false;
   $('#steady').checked = $('#steady-m').checked = !!S.steady;
+  $('#fit-day').checked = !!S.fitDay;
   document.querySelectorAll('#tf-seg button').forEach(b => {
     b.setAttribute('aria-pressed', String(b.dataset.tf === (r.tf || '5m')));
     b.classList.toggle('na', b.dataset.tf === '1m' && !r.b1);
@@ -1095,7 +1107,7 @@ function renderLog() {
   $('#log-body').innerHTML = rows.map(t => {
     const ret = t.side * (t.exit / t.entry - 1);
     const hidden = t.round === S.roundNo && !R().done;
-    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}${t.stopped ? ' <span class="pill tag">stop</span>' : ''}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td>` +
+    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}${t.myTag ? ` <span class="pill tag" title="Your tag">you: ${tagLabel(t.myTag)}</span>` : ''}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}${t.stopped ? ' <span class="pill tag">stop</span>' : ''}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td>` +
       `<td class="${t.R == null ? '' : cls(t.R)}">${t.R == null ? '–' : fmtR(t.R)}</td><td>${t.mfeR == null ? '–' : fmtR(t.mfeR) + ' / ' + fmtR(t.maeR)}</td></tr>`;
   }).join('');
 }
@@ -1318,7 +1330,10 @@ function callStats() {
 function renderEdge() {
   const call = gameOf(R()) === 'call', ts = call ? S.calls : S.trades, t0 = ts[0], noun = call ? 'call' : 'trade';
   const live = R() && !R().done;
-  const key = (call ? 'c|' : 't|') + (live ? 'live|' : '') + ts.length + '|' + (t0 ? [t0.round, t0.entryIdx, t0.exitIdx, t0.tag].join('-') : '');
+  const byMine = !call && S.edgeBy === 'mine';
+  $('#edge-by-wrap').hidden = call;
+  document.querySelectorAll('#edge-by button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.by === (byMine ? 'mine' : 'auto'))));
+  const key = (call ? 'c|' : 't|') + (byMine ? 'mine|' : '') + (live ? 'live|' : '') + ts.length + '|' + (t0 ? [t0.round, t0.entryIdx, t0.exitIdx, t0.tag].join('-') : '');
   if (key === edgeKey) return; edgeKey = key;
   const badge = $('#edge-badge'), text = $('#edge-text'), body = $('#edge-body');
   $('#edge-title').textContent = call ? 'Your calls by setup' : 'Your edge by setup';
@@ -1339,13 +1354,22 @@ function renderEdge() {
     `<td class="${st.n >= BEAT_MIN ? (st.pct >= .95 ? 'up' : st.pct <= .05 ? 'down' : '') : ''}">${st.n >= BEAT_MIN ? pctTxt(st.pct) : '–'}</td></tr>`;
   const autoTs = ts.filter(t => t.auto && t.rules === 2), oldTs = ts.filter(t => t.auto && t.rules !== 2), handTs = ts.filter(t => !t.auto);
   const m5Ts = autoTs.filter(t => t.mode === 'm5'), dailyTs = ts.filter(t => (t.mode || 'daily') === 'daily');
-  const rows = TAGS.map(tg => ({tg, list: m5Ts.filter(t => (t.tag || 'none') === tg.id)}))
-    .filter(x => x.list.length)
-    .map(x => ({label: x.tg.label, st: edgeStats(x.list)})).sort((a, b) => b.st.n - a.st.n);
-  if (dailyTs.length) rows.push({label: 'Older daily charts', st: edgeStats(dailyTs)});
   const notDaily = t => t.mode === 'm5';
-  if (oldTs.some(notDaily)) rows.push({label: 'Older setup rules', st: edgeStats(oldTs.filter(notDaily))});
-  if (handTs.some(notDaily)) rows.push({label: 'Older, tagged by hand', st: edgeStats(handTs.filter(notDaily))});
+  let rows;
+  if (byMine) {
+    // Your tags; trades you didn't tag form one row.
+    const mine = ts.filter(t => t.myTag);
+    rows = TAGS.map(tg => ({tg, list: mine.filter(t => t.myTag === tg.id)})).filter(x => x.list.length)
+      .map(x => ({label: x.tg.label, st: edgeStats(x.list)})).sort((a, b) => b.st.n - a.st.n);
+    if (mine.length < ts.length) rows.push({label: 'Not tagged by you', st: edgeStats(ts.filter(t => !t.myTag))});
+  } else {
+    rows = TAGS.map(tg => ({tg, list: m5Ts.filter(t => (t.tag || 'none') === tg.id)}))
+      .filter(x => x.list.length)
+      .map(x => ({label: x.tg.label, st: edgeStats(x.list)})).sort((a, b) => b.st.n - a.st.n);
+    if (dailyTs.length) rows.push({label: 'Older daily charts', st: edgeStats(dailyTs)});
+    if (oldTs.some(notDaily)) rows.push({label: 'Older setup rules', st: edgeStats(oldTs.filter(notDaily))});
+    if (handTs.some(notDaily)) rows.push({label: 'Older, tagged by hand', st: edgeStats(handTs.filter(notDaily))});
+  }
   const all = edgeStats(ts);
   body.innerHTML = rows.map(x => row(x.label, x.st)).join('') + row('All ' + noun + 's', all, true);
 
@@ -1365,6 +1389,10 @@ function renderEdge() {
       summary.textContent += ` On average a trade went ${fmtR(avgOf(t => t.mfeR))} your way and ${fmtR(avgOf(t => t.maeR))} against you before closing at ${fmtR(avgOf(t => t.R))}` +
         (giveBack != null ? `; winners gave back ${fmtR(giveBack).slice(1)} from their best` : '') + ` (${ex.length} trade${ex.length === 1 ? '' : 's'}).`;
     }
+  }
+  if (byMine) {
+    const tagged = ts.filter(t => t.myTag && t.tag), same = tagged.filter(t => t.myTag === t.tag).length;
+    summary.textContent += tagged.length ? ` Your tag matched the detected setup on ${same} of ${tagged.length} tagged trade${tagged.length === 1 ? '' : 's'}.` : ' You haven’t tagged a trade yet: pick Your setup in the trade panel.';
   }
   summary.hidden = false;
   const beatPct = Math.round(all.pct * 100);
@@ -1463,6 +1491,8 @@ function draw() {
   const volTop = paneTop('vol'), volH = paneH;
   let hi = -Infinity, lo = Infinity, vmax = 0;
   for (let i = first; i <= vl; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
+  // Optional: the whole day so far stays in view (today's bars up to the last revealed one; never later bars).
+  if (S.fitDay && m5) for (let i = DAY; i <= last; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); }
   if (r.pos) { hi = Math.max(hi, r.pos.entry); lo = Math.min(lo, r.pos.entry); }
   // The stop stays in view too, except while it's being dragged (the scale would run away with the pointer).
   if (r.pos && r.pos.stop != null && !stopDragging) { hi = Math.max(hi, r.pos.stop); lo = Math.min(lo, r.pos.stop); }
@@ -1784,6 +1814,9 @@ function bind() {
   $('#btn-close').onclick = () => closePos();
   $('#btn-trim').onclick = () => trimPos();
   $('#btn-stop').onclick = toggleStop;
+  $('#my-tag').onchange = e => { const r = R(), v = e.target.value || null; if (!r || r.done) return; if (r.pos) r.pos.myTag = v; else S.nextTag = v; commit(); };
+  document.querySelectorAll('#edge-by button').forEach(b => b.onclick = () => { S.edgeBy = b.dataset.by; edgeKey = null; commit(); });
+  $('#fit-day').onchange = e => { S.fitDay = e.target.checked; commit(); draw(); };
   $('#btn-step').onclick = () => step(1);
   $('#btn-skip').onclick = () => step(5);
   $('#btn-play').onclick = () => playing ? stopPlay() : startPlay();
