@@ -485,7 +485,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </table>
     </div>
     <p class="foot" id="edge-summary" hidden></p>
-    <p class="foot"><b>Avg R</b> is the average result in units of the risk you took at entry (entry to stop), so −1R is a full stop-out. <b>Profit factor</b> is the dollars won over the dollars lost (for calls, the moves); above 1 makes money. <b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
+    <p class="foot"><b>Avg R</b> is the average result in units of the risk you took at entry (entry to stop), so −1R is a full stop-out. <b>Best / worst</b> in the trade history is how far a trade went your way and against you while you held it (MFE / MAE). <b>Profit factor</b> is the dollars won over the dollars lost (for calls, the moves); above 1 makes money. <b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
   </section>
 
   <section class="card log" aria-label="Trade history">
@@ -497,7 +497,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     </div>
     <div class="table-scroll">
       <table class="log-table">
-        <thead id="log-thead"><tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Bars</th><th>Return</th><th>P&amp;L</th></tr></thead>
+        <thead id="log-thead"></thead>
         <tbody id="log-body"></tbody>
       </table>
     </div>
@@ -529,7 +529,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v44';
+const KEY = 'blindtape.v2', APP_V = 'v45';
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
   {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
@@ -834,11 +834,18 @@ function stopFill(r, i) {
   }
   return null;
 }
+// MFE / MAE: the best and worst open P&L of the trade so far, in $, from each revealed bar's high and low.
+// On the bar a stop fills, only the fill counts, since the order of its high and low isn't known.
+function excursion(p, a, b) {
+  const pl = px => (p.banked || 0) + p.side * p.qty * (px - p.entry);
+  p.mfe = Math.max(p.mfe || 0, pl(a), pl(b)); p.mae = Math.min(p.mae || 0, pl(a), pl(b));
+}
 // Every forward move in Trade goes through here, one bar at a time, so a stop fills on the bar that reaches it.
 function reveal(r, to) {
   while (r.idx < to) {
     r.idx++;
     const f = stopFill(r, r.idx);
+    if (r.pos) { const b = r.bars[r.idx]; f ? excursion(r.pos, f.px, f.px) : excursion(r.pos, b.h, b.l); }
     if (f) { stopPlay(); const t = closePos(true, f.px, f.m); toast('Stopped out · ' + fmt$(t.pnl, true) + (t.R != null ? ' (' + fmtR(t.R) + ')' : '')); return true; }
   }
   return false;
@@ -898,7 +905,9 @@ function closePos(quiet, px = price(), stopMin) {
   const t = {round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.bought, entry: p.cost / p.bought, exit: (p.proceeds + p.qty * px) / p.bought, pnl: total, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r), tf: r.tf || '5m'};
   if (p.adds.length) t.adds = p.adds; if (p.trims.length) t.trims = p.trims;
   if (p.stop0 != null) t.stop0 = p.stop0;
-  if (p.risk > 0) { t.risk = r2(p.risk); t.R = +(total / p.risk).toFixed(2); }
+  excursion(p, px, px);
+  if (p.risk > 0) { t.risk = r2(p.risk); t.R = +(total / p.risk).toFixed(2); t.mfeR = +(p.mfe / p.risk).toFixed(2); t.maeR = +(p.mae / p.risk).toFixed(2); }
+  if (p.stop != null && p.stop !== p.stop0) t.stopX = p.stop;
   if (stopMin !== undefined) t.stopped = true;
   if (p.mi || stopMin != null) t.mi = Object.assign({}, p.mi, stopMin != null ? {x: stopMin} : {});
   S.trades.unshift(t);
@@ -1061,7 +1070,7 @@ function renderOhlc() {
 }
 
 const LOG_HEAD = {
-  trade: '<tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Bars</th><th>Return</th><th>P&amp;L</th></tr>',
+  trade: '<tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Bars</th><th>Return</th><th>P&amp;L</th><th>R</th><th title="Best and worst open profit while in the trade (MFE / MAE), in R">Best / worst</th></tr>',
   call: '<tr><th>Chart</th><th>Ticker</th><th>Setup</th><th>Call</th><th>From</th><th>To</th><th>Move</th><th>Result</th></tr>'
 };
 function renderLog() {
@@ -1086,7 +1095,8 @@ function renderLog() {
   $('#log-body').innerHTML = rows.map(t => {
     const ret = t.side * (t.exit / t.entry - 1);
     const hidden = t.round === S.roundNo && !R().done;
-    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}${t.stopped ? ' <span class="pill tag">stop</span>' : ''}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td></tr>`;
+    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}${t.stopped ? ' <span class="pill tag">stop</span>' : ''}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td>` +
+      `<td class="${t.R == null ? '' : cls(t.R)}">${t.R == null ? '–' : fmtR(t.R)}</td><td>${t.mfeR == null ? '–' : fmtR(t.mfeR) + ' / ' + fmtR(t.maeR)}</td></tr>`;
   }).join('');
 }
 
@@ -1349,6 +1359,12 @@ function renderEdge() {
     summary.textContent = `Average win ${all.avgWin == null ? '–' : fmtPct(all.avgWin)} vs average loss ${all.avgLoss == null ? '–' : fmtPct(all.avgLoss)} · expectancy ${fmtPct(all.avg)} per trade` +
       (all.avgR != null ? ` (${fmtR(all.avgR)} over the ${all.nR} trade${all.nR === 1 ? '' : 's'} with a stop)` : '') +
       ` · profit factor ${fmtPF(all.pf)} · max drawdown ${fmt$(r2(dd), true)} · longest losing streak ${streak}${nStop ? ` · ${nStop} stopped out` : ''}.`;
+    const ex = ts.filter(t => t.mfeR != null), avgOf = f => ex.reduce((a, t) => a + f(t), 0) / ex.length;
+    if (ex.length) {
+      const win = ex.filter(t => t.R > 0), giveBack = win.length ? win.reduce((a, t) => a + t.mfeR - t.R, 0) / win.length : null;
+      summary.textContent += ` On average a trade went ${fmtR(avgOf(t => t.mfeR))} your way and ${fmtR(avgOf(t => t.maeR))} against you before closing at ${fmtR(avgOf(t => t.R))}` +
+        (giveBack != null ? `; winners gave back ${fmtR(giveBack).slice(1)} from their best` : '') + ` (${ex.length} trade${ex.length === 1 ? '' : 's'}).`;
+    }
   }
   summary.hidden = false;
   const beatPct = Math.round(all.pct * 100);
@@ -1377,7 +1393,7 @@ function renderEdge() {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 function niceStep(range, count) { const raw = range / count, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p; return (m < 1.5 ? 1 : m < 3 ? 2 : m < 7 ? 5 : 10) * p; }
 function sma(bars, i, n) { if (i < n - 1) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += bars[k].c; return s / n; }
-let geom = null, pan = 0, panKey = null, zoom = 1;
+let geom = null, pan = 0, panKey = null, zoom = 1, stopDragging = false;
 // On the stop line (within tol px) or its label.
 function onStopAt(mx, my, tol) {
   const g = geom; if (!g || g.stopY == null) return false;
@@ -1448,6 +1464,8 @@ function draw() {
   let hi = -Infinity, lo = Infinity, vmax = 0;
   for (let i = first; i <= vl; i++) { hi = Math.max(hi, bars[i].h); lo = Math.min(lo, bars[i].l); vmax = Math.max(vmax, bars[i].v); }
   if (r.pos) { hi = Math.max(hi, r.pos.entry); lo = Math.min(lo, r.pos.entry); }
+  // The stop stays in view too, except while it's being dragged (the scale would run away with the pointer).
+  if (r.pos && r.pos.stop != null && !stopDragging) { hi = Math.max(hi, r.pos.stop); lo = Math.min(lo, r.pos.stop); }
   // Key levels you switched on stay in view.
   const levels = (m5 && ind.pd ? [IS.pdh, IS.pdl, IS.pdc] : []).concat(m5 && ind.or && last >= IS.orFrom ? [IS.orh, IS.orl] : []);
   levels.forEach(p => { hi = Math.max(hi, p); lo = Math.min(lo, p); });
@@ -1615,6 +1633,15 @@ function draw() {
     (o.adds || []).forEach(i => { if (i < first || i > vl) return; const b = bars[i]; side > 0 ? tri(x(i), y(b.l) + 6, true, C.up, .7) : tri(x(i), y(b.h) - 6, false, C.down, .7); });
     (o.trims || []).forEach(i => { if (i >= first && i <= vl) trimMark(x(i), y(bars[i].c)); });
   };
+  // Each closed trade's stop, from entry to exit: dashed at the stop it closed with, dotted at the first one if it moved.
+  const stopSeg = (t, p, dash) => {
+    const a = Math.max(t.entryIdx, first), b = Math.min(t.exitIdx, vl); if (a > b || p > hi || p < lo) return;
+    const sy = Math.round(y(p)) + .5; ctx.strokeStyle = C.ink; ctx.globalAlpha = .45; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(x(a) - sp / 2, sy); ctx.lineTo(x(b) + sp / 2, sy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+  };
+  roundTrades.forEach(t => {
+    if (t.stop0 != null) { stopSeg(t, t.stopX != null ? t.stopX : t.stop0, [6, 3]); if (t.stopX != null) stopSeg(t, t.stop0, [2, 3]); }
+  });
   roundTrades.forEach(t => {
     entryMark(t.entryIdx, t.side); scaleMarks(t, t.side);
     // A reversal opens a new trade on the exit bar; its entry arrow already marks the exit.
@@ -1873,7 +1900,7 @@ function bind() {
       if (!drag.dir) drag.dir = Math.abs(dy) > Math.abs(dx) ? 'v' : 'h';
       // An up/down drag on an auto scale does nothing, and leaves the cursor alone.
       if (drag.dir === 'v' && !vs) { drag = null; return; }
-      drag.moved = true; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging');
+      drag.moved = true; cv.setPointerCapture(e.pointerId); cv.classList.add('dragging'); stopDragging = drag.dir === 'stop';
     }
     if (drag.dir === 'scale') {
       // Down squashes (a wider price range), up stretches; the middle price stays put.
@@ -1897,7 +1924,7 @@ function bind() {
     if (drag && !drag.moved && drag.dir === 'stop' && e.type === 'pointerup' && e.pointerType !== 'mouse') {
       if (e.timeStamp - stopTap < 400) { stopTap = 0; editStop(); } else stopTap = e.timeStamp;
     }
-    touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); if (drag && drag.moved && drag.dir === 'stop') commit(); drag = null; };
+    touches.delete(e.pointerId); if (touches.size < 2) pinch = null; stopDragging = false; if (drag && drag.moved) cv.classList.remove('dragging'); if (drag && drag.moved && drag.dir === 'stop') commit(); drag = null; };
   // The axis strip shares the chart's handlers; a drag that starts there is captured by the chart.
   for (const el of [cv, $('#axis-grab'), $('#stop-grab')]) {
     el.addEventListener('pointerdown', onDown); el.addEventListener('pointermove', onMove);
