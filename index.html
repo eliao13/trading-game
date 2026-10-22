@@ -81,6 +81,9 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 /* On touch screens a strip over the price axis takes vertical drags, so they squash the scale instead of scrolling. */
 .axis-grab{position:absolute;right:0;width:64px;display:none;touch-action:none;cursor:ns-resize}
 @media (any-pointer:coarse){.axis-grab{display:block}}
+/* On touch screens a strip over the stop line takes its drags, so they move the stop instead of scrolling. */
+.stop-grab{position:absolute;left:0;height:28px;display:none;touch-action:none;cursor:ns-resize}
+@media (any-pointer:coarse){.stop-grab.on{display:block}}
 .pan-btns{position:absolute;right:72px;bottom:32px;display:flex;gap:6px}
 .pan-latest{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 12px var(--sans);padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow)}
 .pan-latest:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -361,6 +364,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       <div class="chart-wrap">
         <canvas id="chart" aria-label="Candlestick chart of the current mystery stock"></canvas>
         <div class="axis-grab" id="axis-grab" aria-hidden="true"></div>
+        <div class="stop-grab" id="stop-grab" aria-hidden="true"></div>
         <div class="pan-btns">
           <button class="pan-latest" id="btn-auto" type="button" hidden aria-label="Fit the price scale to the bars again">Auto</button>
           <button class="pan-latest" id="btn-zoom-reset" type="button" hidden aria-label="Reset the chart zoom">Reset zoom</button>
@@ -423,6 +427,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
           <button class="btn" id="btn-trim" type="button">Trim ½ <kbd>T</kbd></button>
           <button class="btn" id="btn-close" type="button">Close <kbd>C</kbd></button>
         </div>
+        <button class="btn ghost" id="btn-stop" type="button">Remove stop <kbd>X</kbd></button>
       </div>
 
       <div class="group">
@@ -441,7 +446,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <label class="toggle steady-toggle"><input type="checkbox" id="steady"> Steady pace: every bar takes the same time in Play</label>
       </div>
 
-      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
+      <p class="hint">Orders fill at the last close. Pressing the opposite side reverses your position. Pressing your own side again adds to it (up to 2× your equity in total), and Trim ½ sells half. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes: drag its line to move it, or press X to remove it. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -470,11 +475,12 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     <div class="verdict"><span class="pill neutral" id="edge-badge">No trades yet</span><p id="edge-text"></p></div>
     <div class="table-scroll">
       <table class="edge-table">
-        <thead><tr><th>Setup</th><th id="th-n">Trades</th><th id="th-win">Win rate</th><th id="th-avg">Avg return</th><th id="th-long">Always long</th><th id="th-pnl">P&amp;L</th><th>Beat random</th></tr></thead>
+        <thead><tr><th>Setup</th><th id="th-n">Trades</th><th id="th-win">Win rate</th><th id="th-avg">Avg return</th><th id="th-r">Avg R</th><th id="th-pf">Profit factor</th><th id="th-long">Always long</th><th id="th-pnl">P&amp;L</th><th>Beat random</th></tr></thead>
         <tbody id="edge-body"></tbody>
       </table>
     </div>
-    <p class="foot"><b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
+    <p class="foot" id="edge-summary" hidden></p>
+    <p class="foot"><b>Avg R</b> is the average result in units of the risk you took at entry (entry to stop), so −1R is a full stop-out. <b>Profit factor</b> is total gains over total losses; above 1 makes money. <b>Beat random</b> replays your trades or calls on the same bars but with a coin-flip direction, 2,000 times, and shows the share of those runs your real direction beat. Around 50% is what luck looks like; 95% or more is hard to get by chance. <b>Always long</b> (or <b>always up</b>) is the average move if you had picked up every time. If it matches yours, the market's upward drift did the work. With several setups, one of them looking strong by luck alone is common, so trust a setup's number more once it has 50+ trades.</p>
   </section>
 
   <section class="card log" aria-label="Trade history">
@@ -661,14 +667,15 @@ function jumpToMove() {
   const r = R(); if (!canJump(r)) return;
   stopPlay();
   const from = r.idx, call = gameOf(r) === 'call', stepN = call ? CALL_N : 1, b5 = bars5(r), cap = from5(r, JUMP_CAP5);
-  let hit = false;
+  let hit = false, stopped = false;
   // Call it moves in whole passes; it stops after the pass that revealed the move.
   while (r.idx < cap && r.idx + stepN <= r.end) {
     const was5 = to5(r, r.idx);
-    r.idx += stepN;
+    if (call) r.idx += stepN; else if (reveal(r, r.idx + stepN)) { stopped = true; break; }
     for (let i = was5 + 1; i <= to5(r, r.idx); i++) if (jumpTrigger(b5, i)) hit = true;
     if (hit) break;
   }
+  if (stopped) { if (r.idx >= r.end) endRound(); else commit(); return; }
   const n = r.idx - from, at = clock(r.idx, true);
   if (call) { r.lastCall = null; if (r.idx + CALL_N > r.end) { r.idx = r.end; r.done = true; } }
   else if (r.idx >= r.end) { endRound(); toast('Skipped ' + n + ' bars to the close'); return; }
@@ -686,7 +693,10 @@ function setTF(tf) {
   if (!r.b1) { save(); render(); toast(tf === '1m' ? 'This day has no 1-min data · new charts open on 1-min when they can' : '5-min'); return; }
   stopPlay();
   let note = '';
-  if (tf === '5m' && (r.idx + 1) % 5) { r.idx = Math.min(r.end, r.idx + 4 - r.idx % 5); note = ' · played on to ' + clock(r.idx, true) + ' to finish the 5-min bar'; }
+  if (tf === '5m' && (r.idx + 1) % 5) {
+    const to = Math.min(r.end, r.idx + 4 - r.idx % 5), stopped = reveal(r, to); r.idx = to;
+    note = ' · played on to ' + clock(r.idx, true) + ' to finish the 5-min bar' + (stopped ? ' · stopped out' : '');
+  }
   const old = r.tf || '5m', mOf = i => old === '1m' ? i : i * 5 + 4, back = m => old === '1m' ? m : Math.floor(m / 5), vOf = m => tf === '1m' ? m : Math.floor(m / 5);
   const conv = (o, key, i) => { o.mi = o.mi || {}; const c = o.mi[key], m = c != null && back(c) === i ? c : mOf(i); o.mi[key] = m; return vOf(m); };
   for (const o of [r.pos].concat(S.trades.filter(t => t.round === S.roundNo), S.calls.filter(c => c.round === S.roundNo))) {
@@ -775,6 +785,44 @@ const start5 = (r, i5) => is1(r) ? i5 * 5 : i5;                    // view bar w
 const price = () => R().bars[R().idx].c;
 const unreal = () => { const p = R().pos; return p ? r2(p.side * p.qty * (price() - p.entry)) : 0; };
 const equity = () => S.cash + unreal();
+// Stop: every entry gets one just past the low (long) or high (short) of the last 15 minutes of revealed bars.
+// It fills on the first revealed bar that reaches it: at the stop, or at the bar's open if it gapped past. On a
+// 1-min day the minutes decide whichever view is showing, so both views fill at the same minute and price.
+const STOP_STEP = 0.001;
+const fmtR = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + 'R';
+const clampStop = (p, side, px) => r2(side > 0 ? Math.min(p, px * (1 - STOP_STEP)) : Math.max(p, px * (1 + STOP_STEP)));
+function defaultStop(r, side) {
+  useTF(r);
+  const n = 15 / BM, px = r.bars[r.idx].c; let st = side > 0 ? Infinity : -Infinity;
+  for (let i = Math.max(0, r.idx - n + 1); i <= r.idx; i++) st = side > 0 ? Math.min(st, r.bars[i].l) : Math.max(st, r.bars[i].h);
+  return clampStop(st, side, px);
+}
+// The fill if the stop is reached on view bar i, as {px, m} (m = the minute, on a 1-min day), else null.
+function stopFill(r, i) {
+  const p = r.pos; if (!p || p.stop == null) return null;
+  const st = p.stop, side = p.side, sub = r.b1 && !is1(r) ? r.b1.slice(i * 5, i * 5 + 5) : [r.bars[i]];
+  for (let k = 0; k < sub.length; k++) {
+    const b = sub[k], m = r.b1 ? (is1(r) ? i : i * 5 + k) : null;
+    if (side > 0 ? b.o <= st : b.o >= st) return {px: b.o, m};
+    if (side > 0 ? b.l <= st : b.h >= st) return {px: st, m};
+  }
+  return null;
+}
+// Every forward move in Trade goes through here, one bar at a time, so a stop fills on the bar that reaches it.
+function reveal(r, to) {
+  while (r.idx < to) {
+    r.idx++;
+    const f = stopFill(r, r.idx);
+    if (f) { stopPlay(); const t = closePos(true, f.px, f.m); toast('Stopped out · ' + fmt$(t.pnl, true) + (t.R != null ? ' (' + fmtR(t.R) + ')' : '')); return true; }
+  }
+  return false;
+}
+function toggleStop() {
+  const r = R(), p = r && r.pos; if (!p || r.done) return;
+  if (p.stop != null) { p.stop = null; toast('Stop removed'); }
+  else { p.stop = defaultStop(r, p.side); if (p.risk == null) p.risk = p.qty * Math.abs(p.entry - p.stop); toast('Stop at ' + fmtP(p.stop)); }
+  commit();
+}
 
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.opacity = 0, 1600); }
 
@@ -784,8 +832,9 @@ function openPos(side) {
   if (r.pos) closePos(true);
   const qty = Math.floor(equity() * SIZES[S.sizeIdx] / price());
   if (qty < 1) { toast('Not enough equity for one share'); return; }
-  r.pos = scaleOf({side, qty, entry: price(), entryIdx: r.idx});
-  toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(price()));
+  const st = defaultStop(r, side);
+  r.pos = scaleOf({side, qty, entry: price(), entryIdx: r.idx, stop: st, stop0: st, risk: qty * Math.abs(price() - st)});
+  toast((side > 0 ? 'Long ' : 'Short ') + qty + ' @ ' + fmtP(price()) + ' · stop ' + fmtP(st));
   commit();
 }
 // Scaling bookkeeping; a position opened before adds and trims existed gets it on first use.
@@ -799,6 +848,7 @@ function addPos() {
   if (qty < 1) { toast(room < 1 ? 'At the 2× buying-power limit' : 'Not enough equity for one share'); return; }
   p.entry = (p.entry * p.qty + px * qty) / (p.qty + qty); p.qty += qty;
   p.bought += qty; p.cost += qty * px; p.adds.push(r.idx);
+  p.risk = (p.risk || 0) + qty * Math.abs(px - (p.stop != null ? p.stop : defaultStop(r, p.side)));
   toast('Added ' + qty + ' @ ' + fmtP(px) + ' · avg ' + fmtP(p.entry));
   commit();
 }
@@ -812,22 +862,28 @@ function trimPos() {
   toast('Trimmed ' + tq + ' @ ' + fmtP(px) + ' · ' + fmt$(pnl, true));
   commit();
 }
-function closePos(quiet) {
+// px: the fill (the last close unless a stop filled); stopMin: the stop's minute on a 1-min day, or undefined.
+function closePos(quiet, px = price(), stopMin) {
   const r = R(), p = r && r.pos; if (!p) return;
   scaleOf(p);
-  const pnl = unreal(), px = price(), total = r2(p.banked + pnl);
+  const pnl = r2(p.side * p.qty * (px - p.entry)), total = r2(p.banked + pnl);
   S.cash = r2(S.cash + pnl);
   const t = {round: S.roundNo, ticker: r.ticker, side: p.side, qty: p.bought, entry: p.cost / p.bought, exit: (p.proceeds + p.qty * px) / p.bought, pnl: total, held: r.idx - p.entryIdx, entryIdx: p.entryIdx, exitIdx: r.idx, tag: autoTag(r, p.side, p.entryIdx), auto: true, rules: 2, mode: modeOf(r), tf: r.tf || '5m'};
   if (p.adds.length) t.adds = p.adds; if (p.trims.length) t.trims = p.trims;
+  if (p.stop0 != null) t.stop0 = p.stop0;
+  if (p.risk > 0) { t.risk = r2(p.risk); t.R = +(total / p.risk).toFixed(2); }
+  if (stopMin !== undefined) t.stopped = true;
+  if (p.mi || stopMin != null) t.mi = Object.assign({}, p.mi, stopMin != null ? {x: stopMin} : {});
   S.trades.unshift(t);
   if (S.trades.length > 500) S.trades.length = 500;
   r.pos = null;
   if (!quiet) toast('Closed ' + fmt$(total, true));
   commit();
+  return t;
 }
 function step(n = 1) {
   const r = R(); if (!r || r.done) return;
-  r.idx = Math.min(r.end, r.idx + n);
+  reveal(r, Math.min(r.end, r.idx + n));
   if (r.idx >= r.end) endRound(); else commit();
 }
 function endRound() {
@@ -897,12 +953,13 @@ function render() {
   $('#pos-side').textContent = p ? (p.side > 0 ? 'Long' : 'Short') : 'Flat';
   $('#pos-side').className = 'pos-side ' + (p ? (p.side > 0 ? 'up' : 'down') : '');
   const banked = p && p.banked || 0, scaled = p && ((p.adds && p.adds.length) || (p.trims && p.trims.length));
-  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  $('#pos-sub').textContent = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)} · ${r.idx - p.entryIdx} bars · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
   const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
 
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
   $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
   $('#btn-close').disabled = r.done || !p; $('#btn-trim').disabled = r.done || !p;
+  $('#btn-stop').disabled = r.done || !p; $('#btn-stop').innerHTML = (p && p.stop == null ? 'Add stop' : 'Remove stop') + ' <kbd>X</kbd>';
   $('#btn-long').innerHTML = (p && p.side > 0 ? 'Add' : 'Long') + ' <kbd>B</kbd>';
   $('#btn-short').innerHTML = (p && p.side < 0 ? 'Add' : 'Short') + ' <kbd>S</kbd>';
   $('#btn-step').disabled = r.done; $('#btn-skip').disabled = r.done; $('#btn-play').disabled = r.done;
@@ -1001,7 +1058,7 @@ function renderLog() {
   $('#log-body').innerHTML = rows.map(t => {
     const ret = t.side * (t.exit / t.entry - 1);
     const hidden = t.round === S.roundNo && !R().done;
-    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td></tr>`;
+    return `<tr><td>#${t.round}${t.mode === 'm5' ? ' · 5m' : ''}</td><td>${hidden ? '???' : t.ticker}</td><td>${hidden ? '?' : `<span class="pill tag">${t.auto ? tagLabel(t.tag) : t.tag && t.tag !== 'none' ? 'By hand: ' + tagLabel(t.tag) : 'Untagged'}</span>`}</td><td><span class="pill ${t.side > 0 ? 'long' : 'short'}">${t.side > 0 ? 'Long' : 'Short'}</span></td><td>${t.qty}</td><td>${fmtP(t.entry)}</td><td>${fmtP(t.exit)}${t.stopped ? ' <span class="pill tag">stop</span>' : ''}</td><td>${t.held}</td><td class="${cls(ret)}">${fmtPct(ret)}</td><td class="${cls(t.pnl)}">${fmt$(t.pnl, true)}</td></tr>`;
   }).join('');
 }
 
@@ -1206,7 +1263,11 @@ function edgeStats(ts) {
     const s = sum / n;
     if (avg > s + 1e-12) beat++; else if (Math.abs(avg - s) <= 1e-12) beat += .5;
   }
-  return {n, win: mine.filter(x => x > 0).length / n, avg, longAvg, pnl: r2(ts.reduce((a, t) => a + t.pnl, 0)), pct: beat / N};
+  const sum = a => a.reduce((x, y) => x + y, 0), wins = mine.filter(x => x > 0), losses = mine.filter(x => x < 0), sw = sum(wins), sl = -sum(losses);
+  const Rs = ts.filter(t => t.R != null).map(t => t.R);
+  return {n, win: wins.length / n, avg, longAvg, pnl: r2(ts.reduce((a, t) => a + t.pnl, 0)), pct: beat / N,
+    pf: sl > 0 ? sw / sl : sw > 0 ? Infinity : null, avgWin: wins.length ? sw / wins.length : null, avgLoss: losses.length ? -sl / losses.length : null,
+    avgR: Rs.length ? sum(Rs) / Rs.length : null, nR: Rs.length};
 }
 let edgeKey = null, callKey = null, callCache = null;
 function callStats() {
@@ -1223,7 +1284,8 @@ function renderEdge() {
   $('#edge-title').textContent = call ? 'Your calls by setup' : 'Your edge by setup';
   $('#th-n').textContent = call ? 'Calls' : 'Trades'; $('#th-win').textContent = call ? 'Hit rate' : 'Win rate';
   $('#th-avg').textContent = call ? 'Avg move' : 'Avg return'; $('#th-long').textContent = call ? 'Always up' : 'Always long';
-  $('#th-pnl').textContent = call ? '' : 'P&L';
+  $('#th-pnl').textContent = call ? '' : 'P&L'; $('#th-r').textContent = call ? '' : 'Avg R';
+  const summary = $('#edge-summary'); summary.hidden = true;
   $('.edge-table').hidden = live && ts.length > 0;
   if (live && ts.length) {
     badge.className = 'pill neutral'; badge.textContent = 'Hidden until this chart ends';
@@ -1231,9 +1293,9 @@ function renderEdge() {
     body.innerHTML = ''; return;
   }
   if (!ts.length) { badge.className = 'pill neutral'; badge.textContent = 'No ' + noun + 's yet'; text.textContent = EDGE_INTRO(noun); body.innerHTML = ''; return; }
-  const pctTxt = x => Math.round(x * 100) + '%';
+  const pctTxt = x => Math.round(x * 100) + '%', fmtPF = x => x == null ? '–' : x === Infinity ? '∞' : x.toFixed(2);
   const row = (label, st, total) => `<tr${total ? ' class="total"' : ''}><td>${label}</td><td>${st.n}</td><td>${pctTxt(st.win)}</td>` +
-    `<td class="${cls(st.avg)}">${fmtPct(st.avg)}</td><td class="${cls(st.longAvg)}">${fmtPct(st.longAvg)}</td><td class="${call ? '' : cls(st.pnl)}">${call ? '' : fmt$(st.pnl, true)}</td>` +
+    `<td class="${cls(st.avg)}">${fmtPct(st.avg)}</td><td class="${call || st.avgR == null ? '' : cls(st.avgR)}">${call ? '' : st.avgR == null ? '–' : fmtR(st.avgR)}</td><td>${fmtPF(st.pf)}</td><td class="${cls(st.longAvg)}">${fmtPct(st.longAvg)}</td><td class="${call ? '' : cls(st.pnl)}">${call ? '' : fmt$(st.pnl, true)}</td>` +
     `<td class="${st.n >= 10 ? (st.pct >= .95 ? 'up' : st.pct <= .05 ? 'down' : '') : ''}">${st.n >= 5 ? pctTxt(st.pct) : '–'}</td></tr>`;
   const autoTs = ts.filter(t => t.auto && t.rules === 2), oldTs = ts.filter(t => t.auto && t.rules !== 2), handTs = ts.filter(t => !t.auto);
   const m5Ts = autoTs.filter(t => t.mode === 'm5'), dailyTs = ts.filter(t => (t.mode || 'daily') === 'daily');
@@ -1247,6 +1309,18 @@ function renderEdge() {
   const all = edgeStats(ts);
   body.innerHTML = rows.map(x => row(x.label, x.st)).join('') + row('All ' + noun + 's', all, true);
 
+  // Long-run summary, oldest to newest: drawdown on the P&L sequence and the longest losing run.
+  const seq = ts.slice().reverse(), lost = t => call ? !t.hit : t.pnl < 0;
+  let run = 0, streak = 0; for (const t of seq) { run = lost(t) ? run + 1 : 0; streak = Math.max(streak, run); }
+  if (call) summary.textContent = `Average right call ${all.avgWin == null ? '–' : fmtPct(all.avgWin)} vs wrong ${all.avgLoss == null ? '–' : fmtPct(all.avgLoss)} · longest wrong streak ${streak}.`;
+  else {
+    let cum = 0, peak = 0, dd = 0; for (const t of seq) { cum += t.pnl; peak = Math.max(peak, cum); dd = Math.min(dd, cum - peak); }
+    const nStop = ts.filter(t => t.stopped).length;
+    summary.textContent = `Average win ${all.avgWin == null ? '–' : fmtPct(all.avgWin)} vs average loss ${all.avgLoss == null ? '–' : fmtPct(all.avgLoss)} · expectancy ${fmtPct(all.avg)} per trade` +
+      (all.avgR != null ? ` (${fmtR(all.avgR)} over the ${all.nR} trade${all.nR === 1 ? '' : 's'} with a stop)` : '') +
+      ` · profit factor ${fmtPF(all.pf)} · max drawdown ${fmt$(r2(dd), true)} · longest losing streak ${streak}${nStop ? ` · ${nStop} stopped out` : ''}.`;
+  }
+  summary.hidden = false;
   const beatPct = Math.round(all.pct * 100);
   let b, t;
   if (all.n < 30) {
@@ -1329,7 +1403,7 @@ function draw() {
   const ag = $('#axis-grab'), agTop = top + 'px', agH = priceH + 'px'; if (ag.style.top !== agTop || ag.style.height !== agH) { ag.style.top = agTop; ag.style.height = agH; }
   const y = p => top + (hi - p) / (hi - lo) * priceH;
   const x = i => left + (i - first + 0.5) * sp;
-  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo, tY: H_ - bottom};
+  geom = {first, last: vl, sp, left, plotW, base, maxSlots, blank, lastI: last, top, priceH, hi, lo, tY: H_ - bottom, stopY: null};
   const mono = '11px "IBM Plex Mono", ui-monospace, monospace';
 
   // unseen future
@@ -1488,14 +1562,25 @@ function draw() {
   roundTrades.forEach(t => {
     entryMark(t.entryIdx, t.side); scaleMarks(t, t.side);
     // A reversal opens a new trade on the exit bar; its entry arrow already marks the exit.
-    if (t.exitIdx >= first && t.exitIdx <= vl && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
+    if (t.exitIdx >= first && t.exitIdx <= vl && !entryBars.has(t.exitIdx)) { const b = bars[t.exitIdx]; exitMark(x(t.exitIdx), t.stopped ? y(t.exit) : t.side > 0 ? y(b.h) - 10 : y(b.l) + 10); }
   });
   if (r.pos) {
     entryMark(r.pos.entryIdx, r.pos.side); scaleMarks(r.pos, r.pos.side);
     const ey = Math.round(y(r.pos.entry)) + .5, col = r.pos.side > 0 ? C.up : C.down;
     ctx.strokeStyle = col; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(left, ey); ctx.lineTo(left + plotW, ey); ctx.stroke(); ctx.setLineDash([]);
     axisTag(ctx, r.pos.entry, ey, C.surface, col, left + plotW, axisW, true);
+    const st = r.pos.stop;
+    if (st != null && st <= hi && st >= lo) {
+      const sy = Math.round(y(st)) + .5, loss = r2((r.pos.banked || 0) + r.pos.side * r.pos.qty * (st - r.pos.entry));
+      ctx.strokeStyle = C.ink; ctx.globalAlpha = .8; ctx.setLineDash([6, 3]); ctx.beginPath(); ctx.moveTo(left, sy); ctx.lineTo(left + plotW, sy); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+      ctx.font = '600 11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textAlign = 'left'; ctx.textBaseline = r.pos.side > 0 ? 'top' : 'bottom'; ctx.fillStyle = C.ink;
+      ctx.fillText('STOP ' + fmt$(loss, true), left + 4, sy + (r.pos.side > 0 ? 3 : -3));
+      axisTag(ctx, st, sy, C.ink, C.surface, left + plotW, axisW, false);
+      geom.stopY = sy;
+    }
   }
+  const sg = $('#stop-grab'), sgOn = geom.stopY != null && !r.done; if (sg.classList.contains('on') !== sgOn) sg.classList.toggle('on', sgOn);
+  if (sgOn) { const t2 = (geom.stopY - 14) + 'px', w2 = (left + plotW) + 'px'; if (sg.style.top !== t2) sg.style.top = t2; if (sg.style.width !== w2) sg.style.width = w2; }
 
   S.calls.filter(c => c.round === S.roundNo).forEach(c => {
       entryMark(c.entryIdx, c.side);
@@ -1613,6 +1698,7 @@ function bind() {
   $('#btn-short').onclick = () => openPos(-1);
   $('#btn-close').onclick = () => closePos();
   $('#btn-trim').onclick = () => trimPos();
+  $('#btn-stop').onclick = toggleStop;
   $('#btn-step').onclick = () => step(1);
   $('#btn-skip').onclick = () => step(5);
   $('#btn-play').onclick = () => playing ? stopPlay() : startPlay();
@@ -1673,6 +1759,7 @@ function bind() {
     else if (k === 's') openPos(-1);
     else if (k === 'c') closePos();
     else if (k === 't') trimPos();
+    else if (k === 'x') toggleStop();
     else if (k === ' ' || k === 'arrowright') { e.preventDefault(); step(1); }
     else if (k === 'f') step(5);
     else if (k === 'p') playing ? stopPlay() : startPlay();
@@ -1689,7 +1776,8 @@ function bind() {
     hoverY = e.clientY - rect.top;
     const onAxis = mx > geom.left + geom.plotW && hoverY >= geom.top && hoverY <= geom.top + geom.priceH;
     const onTime = hoverY > geom.tY && mx >= geom.left && mx <= geom.left + geom.plotW;
-    if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis ? 'ns-resize' : onTime ? 'ew-resize' : '';
+    const onStop = geom.stopY != null && Math.abs(hoverY - geom.stopY) <= 6 && mx >= geom.left && mx <= geom.left + geom.plotW;
+    if (!cv.classList.contains('dragging')) cv.style.cursor = onAxis || onStop ? 'ns-resize' : onTime ? 'ew-resize' : '';
     if (ni !== hoverI) { hoverI = ni; renderOhlc(); }
     draw();
   };
@@ -1709,7 +1797,8 @@ function bind() {
       const rect = cv.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top, g = geom;
       const onAxis = mx > g.left + g.plotW && my >= g.top && my <= g.top + g.priceH;
       const onTime = my > g.tY && mx >= g.left && mx <= g.left + g.plotW;
-      drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onAxis ? 'scale' : onTime ? 'tscale' : null, hi: g.hi, lo: g.lo, zoom0: zoom};
+      const onStop = g.stopY != null && Math.abs(my - g.stopY) <= (e.pointerType === 'mouse' ? 6 : 14) && mx >= g.left && mx <= g.left + g.plotW;
+      drag = {x: e.clientX, y: e.clientY, pan, id: e.pointerId, moved: false, dir: onStop ? 'stop' : onAxis ? 'scale' : onTime ? 'tscale' : null, hi: g.hi, lo: g.lo, zoom0: zoom};
     }
   };
   const onMove = e => {
@@ -1733,14 +1822,20 @@ function bind() {
       const mid = (drag.hi + drag.lo) / 2, half = Math.max((drag.hi - drag.lo) / 2 * Math.exp(dy / 150), Math.abs(mid) * 1e-5 || 1e-5);
       vs = {hi: mid + half, lo: mid - half}; draw(); return;
     }
+    // The stop follows the pointer, but never crosses the last close.
+    if (drag.dir === 'stop') {
+      const r = R(), p = r && r.pos; if (!p || r.done) return;
+      const g = geom, my = e.clientY - cv.getBoundingClientRect().top, raw = g.hi - (my - g.top) / g.priceH * (g.hi - g.lo);
+      p.stop = clampStop(raw, p.side, price()); draw(); return;
+    }
     // Right stretches (fewer, wider bars), left squashes.
     if (drag.dir === 'tscale') { zoomTo(drag.zoom0 * Math.exp(dx / 150), null); return; }
     if (drag.dir === 'v') { const d = dy / geom.priceH * (drag.hi - drag.lo); vs = {hi: drag.hi + d, lo: drag.lo + d}; draw(); return; }
     pan = Math.max(0, drag.pan + Math.round(dx / geom.sp)); draw();
   };
-  const endDrag = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); drag = null; };
+  const endDrag = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; if (drag && drag.moved) cv.classList.remove('dragging'); if (drag && drag.moved && drag.dir === 'stop') commit(); drag = null; };
   // The axis strip shares the chart's handlers; a drag that starts there is captured by the chart.
-  for (const el of [cv, $('#axis-grab')]) {
+  for (const el of [cv, $('#axis-grab'), $('#stop-grab')]) {
     el.addEventListener('pointerdown', onDown); el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', endDrag); el.addEventListener('pointercancel', endDrag);
   }
