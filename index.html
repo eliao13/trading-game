@@ -176,6 +176,9 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .btn.ghost{background:transparent;border-color:transparent;color:var(--muted);font-weight:500;font-size:13px;padding:6px}
 select{font:500 13px var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:9px 8px}
 .hint{font-size:12.5px;color:var(--muted);margin:0;text-wrap:pretty}
+details.hint>summary{cursor:pointer;width:max-content;font-weight:500}
+details.hint>summary:hover{color:var(--ink)}
+details.hint>p{margin:6px 0 0}
 
 /* log */
 .log{padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -585,7 +588,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <label class="toggle steady-toggle"><input type="checkbox" id="steady"> Steady pace: every bar takes the same time in Play</label>
       </div>
 
-      <p class="hint">Orders fill at the last close. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes, and at least one average 5-min bar away. The size is set so that hitting it loses the chosen share of your equity, within 4× your equity in total (intraday buying power). Drag the stop's line or label to move it, double-click it (double-tap on touch) to type a price, or press X to remove it. Pressing the opposite side reverses your position. Pressing your own side again adds the same risk again, measured to your current stop, and Trim ½ sells half. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p>
+      <details class="hint"><summary>How orders work</summary><p>Orders fill at the last close. Every entry gets a stop just past the low (high, for a short) of the last 15 minutes, and at least one average 5-min bar away. The size is set so that hitting it loses the chosen share of your equity, within 4× your equity in total (intraday buying power). Drag the stop's line or label to move it, double-click it (double-tap on touch) to type a price, or press X to remove it. Pressing the opposite side reverses your position. Pressing your own side again adds the same risk again, measured to your current stop, and Trim ½ sells half. It fills at the stop, or at a bar's open if the bar gaps past it, and Play pauses there. When the chart runs out, any open trade is closed automatically; in 5-min mode that's the 16:00 close. Skip to move jumps ahead to the next bar with at least twice the usual range (or to 15:00), with your position riding along. Play speeds through quiet bars and slows down on big ones, unless Steady pace is on.</p></details>
       </div>
       <div class="panel-body" id="call-panel" hidden>
         <div class="pos" id="call-result" data-res="none">
@@ -603,7 +606,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <button class="btn btn-jump" id="btn-jump-call" type="button">Skip to move <kbd>J</kbd></button>
           </div>
         </div>
-        <p class="hint">Each call is scored on the close 5 bars later. Pass moves ahead 5 bars without scoring; Skip to move passes until a bar with at least twice the usual range shows up (or 15:00). You get a new call every 5 bars until the chart ends, then the stock is revealed.</p>
+        <details class="hint"><summary>How calls are scored</summary><p>Each call is scored on the close 5 bars later. Pass moves ahead 5 bars without scoring; Skip to move passes until a bar with at least twice the usual range shows up (or 15:00). You get a new call every 5 bars until the chart ends, then the stock is revealed.</p></details>
       </div>
       <button class="btn ghost" id="btn-new" type="button">Skip to a new chart</button>
     </aside>
@@ -676,7 +679,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v54';
+const KEY = 'blindtape.v2', APP_V = 'v55';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
