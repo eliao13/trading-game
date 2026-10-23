@@ -345,6 +345,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 }
 /* Desktop: the tablet-landscape side panel, so it ends near the chart. */
 @media (min-width:1025px){
+  .main{align-items:stretch}
+  .chart-wrap{flex:1 0 auto;height:auto;min-height:clamp(320px,58vh,560px)}
   .panel{gap:12px;padding:12px}
   .panel .steady-toggle{display:none}
   .ind-phone{display:flex}
@@ -694,7 +696,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v56';
+const KEY = 'blindtape.v2', APP_V = 'v57';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
