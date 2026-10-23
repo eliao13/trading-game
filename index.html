@@ -318,6 +318,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .panel{overflow-y:auto;min-height:0;scrollbar-width:thin}
   #btn-new{margin-top:auto}
   #trade-panel>.group:last-of-type .btn{padding-left:8px;padding-right:8px;white-space:nowrap}
+  #call-panel .row .btn{padding-left:8px;padding-right:8px;white-space:nowrap}
   #btn-step,#btn-skip,#btn-play,#speed{grid-column:span 3}
   #btn-jump{grid-column:1/-1}
   .pr-pct{display:none}
@@ -329,8 +330,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .my-tag select{min-height:44px}
 }
 
-/* ---------- phones and tablets: the position card on two lines, with the risk ---------- */
-@media (max-width:1024px){
+/* ---------- the position card on two lines, with the risk (every width since v56) ---------- */
+@media all{
   .panel .pos{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 10px;padding:6px 12px}
   .panel .pos>.label{display:none}
   .panel .pos-side{grid-column:1;grid-row:1;font-size:17px}
@@ -341,6 +342,20 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .ps-bars,.ps-q{display:none}
   .ps-qty{display:inline;font:600 15px var(--sans)}
   .pos-risk{display:block;grid-column:2;grid-row:2;font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
+}
+/* Desktop: the tablet-landscape side panel, so it ends near the chart. */
+@media (min-width:1025px){
+  .panel{gap:12px;padding:12px}
+  .panel .steady-toggle{display:none}
+  .ind-phone{display:flex}
+  #btn-stop{border-color:var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--sans);padding:11px 12px}
+  #btn-new{border:1px dashed var(--line)}
+  #trade-panel>.group:last-of-type .row{grid-template-columns:repeat(6,minmax(0,1fr))}
+  #trade-panel>.group:last-of-type .btn{padding-left:8px;padding-right:8px;white-space:nowrap}
+  #call-panel .row .btn{padding-left:8px;padding-right:8px;white-space:nowrap}
+  #btn-step,#btn-skip,#btn-play,#speed{grid-column:span 3}
+  #btn-jump{grid-column:1/-1}
+  .pr-pct{display:none}
 }
 
 /* ---------- phone: chart on top, controls docked at the bottom, no page scroll while playing ---------- */
@@ -679,7 +694,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v55';
+const KEY = 'blindtape.v2', APP_V = 'v56';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
