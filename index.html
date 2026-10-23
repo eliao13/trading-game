@@ -221,7 +221,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ind-menu>summary{list-style:none;cursor:pointer}
 .ind-menu>summary::-webkit-details-marker{display:none}
 .ind-count{color:var(--accent);font-family:var(--mono)}
-.ind-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:270px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px 14px 10px;display:flex;flex-direction:column}
+.ind-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:270px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px 14px 10px;display:flex;flex-direction:column;max-height:var(--pop-max,70vh);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}
 .ind-pop .label{padding:8px 0 2px}
 .ind-pop label{display:flex;align-items:center;gap:10px;min-height:36px;font-size:14px;cursor:pointer}
 .ind-pop input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
@@ -672,7 +672,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v52';
+const KEY = 'blindtape.v2', APP_V = 'v53';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -2015,6 +2015,10 @@ function bind() {
   $('#btn-new').onclick = nextChart;
   document.querySelectorAll('#ind-menu input[data-ind]').forEach(cb => cb.onchange = () => { S.ind = Object.assign({}, S.ind, {[cb.dataset.ind]: cb.checked}); commit(); });
   // The indicators menu closes on a tap outside it or on Escape.
+  // The menu fits above the bottom of the screen and scrolls inside when it's longer.
+  const fitPop = () => { const m = $('#ind-menu'), p = m.querySelector('.ind-pop'); if (!m.open) return;
+    p.style.setProperty('--pop-max', Math.max(160, (visualViewport ? visualViewport.height : innerHeight) - p.getBoundingClientRect().top - 12) + 'px'); };
+  $('#ind-menu').addEventListener('toggle', fitPop); addEventListener('resize', fitPop);
   document.addEventListener('click', e => { const m = $('#ind-menu'); if (m.open && !m.contains(e.target)) m.open = false; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#ind-menu').open) { $('#ind-menu').open = false; $('#ind-menu summary').focus(); } });
   document.querySelectorAll('#size-seg button').forEach(b => b.onclick = () => { S.sizeIdx = +b.dataset.i; commit(); });
