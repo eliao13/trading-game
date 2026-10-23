@@ -227,6 +227,9 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ind-pop input{width:18px;height:18px;margin:0;accent-color:var(--accent)}
 .ind-pop .sw{width:18px;height:3px;border-radius:2px;background:var(--c);margin-left:auto}
 .reset-top{align-self:flex-end}
+.seg.or-seg{grid-template-columns:repeat(2,1fr);margin:2px 0 4px 28px}
+.seg.or-seg button{font:500 12.5px var(--sans);padding:7px 0}
+.seg.or-seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface)}
 .ind-phone{display:none;flex-direction:column}
 /* Phone-only pieces stay out of the desktop layout. */
 .phone-bar,.intro-close,.stats-bar,.setups-btn{display:none}
@@ -470,7 +473,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <label><input type="checkbox" data-ind="vwap"> VWAP <i class="sw" style="--c:var(--ink)"></i></label>
             <label><input type="checkbox" data-ind="bb"> Bollinger Bands 20, 2 <i class="sw" style="--c:var(--bb)"></i></label>
             <label><input type="checkbox" data-ind="pd"> Prior-day high / low / close <i class="sw" style="--c:var(--ink)"></i></label>
-            <label><input type="checkbox" data-ind="or"> Opening range, first 30 min <i class="sw" style="--c:var(--accent)"></i></label>
+            <label><input type="checkbox" data-ind="or"> Opening range <i class="sw" style="--c:var(--accent)"></i></label>
+            <div class="seg or-seg" id="or-seg" role="group" aria-label="Opening range length" title="Lines only: the Opening-range break setup tag always uses the first 30 minutes"><button type="button" data-or="15">First 15 min</button><button type="button" data-or="30">First 30 min</button></div>
             <span class="label">Price scale</span>
             <label><input type="checkbox" id="fit-day"> Fit the whole day so far</label>
             <span class="label">Below the chart</span>
@@ -658,7 +662,7 @@ const START_CASH = 10000, HIST = 90, FWD = 80, RISKS = [0.001, 0.0025, 0.005], B
 // describe the view being shown (bars per session, minutes per bar); useTF sets them from the round.
 const DAY5 = 78, M5_HIST = DAY5 + 6;
 let DAY = DAY5, BM = 5;
-const ORN = () => 30 / BM; // bars in the 30-minute opening range
+const ORN = () => (S && S.orMin === 15 ? 15 : 30) / BM; // bars in the drawn opening range (15 or 30 min; the ORB tag always uses 30)
 const useTF = r => { BM = r && r.tf === '1m' ? 1 : 5; DAY = 390 / BM; };
 const MODES = {daily: {label: 'Daily', file: 'data.json'}, m5: {label: '5-min', files: ['tape-5m-1.json', 'tape-5m-2.json']}};
 const M1_FILES = ['tape-1m-1.json', 'tape-1m-2.json'];
@@ -672,7 +676,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v53';
+const KEY = 'blindtape.v2', APP_V = 'v54';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -1168,6 +1172,7 @@ function render() {
   $('#structure-toggle').checked = S.showStructure !== false;
   $('#steady').checked = $('#steady-m').checked = !!S.steady;
   $('#fit-day').checked = !!S.fitDay;
+  document.querySelectorAll('#or-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.or === (S.orMin === 15 ? 15 : 30))));
   document.querySelectorAll('#tf-seg button').forEach(b => {
     b.setAttribute('aria-pressed', String(b.dataset.tf === (r.tf || '5m')));
     b.classList.toggle('na', b.dataset.tf === '1m' && !r.b1);
@@ -1328,7 +1333,7 @@ function indSeries(bars, m5) {
     s.vwap = vwapSeries(bars);
     const pd = bars.slice(0, DAY), or = bars.slice(DAY, DAY + ORN());
     s.pdh = Math.max(...pd.map(b => b.h)); s.pdl = Math.min(...pd.map(b => b.l)); s.pdc = pd[DAY - 1].c;
-    // The opening range is complete at the 10:00 bar's close, the first bar it may be drawn on.
+    // The opening range is complete at the close of its last bar (09:45 or 10:00), the first bar it may be drawn on.
     s.orh = Math.max(...or.map(b => b.h)); s.orl = Math.min(...or.map(b => b.l)); s.orFrom = DAY + ORN() - 1;
   }
   return s;
@@ -2022,6 +2027,7 @@ function bind() {
   document.addEventListener('click', e => { const m = $('#ind-menu'); if (m.open && !m.contains(e.target)) m.open = false; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#ind-menu').open) { $('#ind-menu').open = false; $('#ind-menu summary').focus(); } });
   document.querySelectorAll('#size-seg button').forEach(b => b.onclick = () => { S.sizeIdx = +b.dataset.i; commit(); });
+  document.querySelectorAll('#or-seg button').forEach(b => b.onclick = () => { S.orMin = +b.dataset.or; S.ind = Object.assign({}, S.ind, {or: true}); commit(); });
 
 
   // Reset account sits in the stats row and under the trade history; both ask before clearing.
@@ -2030,7 +2036,7 @@ function bind() {
     const ask = () => {
       wrap.innerHTML = '<span>Back to $10,000 and clear all trades, calls and win/loss?</span><button class="btn short" type="button">Reset</button><button class="btn" type="button">Keep playing</button>';
       const [yes, no] = wrap.querySelectorAll('button');
-      yes.onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game, ind: S.ind, steady: S.steady, tf: S.tf}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); resetShows.forEach(f => f()); toast('Reset: $10,000, no trades or calls'); };
+      yes.onclick = () => { if (!DATA) return; stopPlay(); const keep = {mode: S.mode, game: S.game, ind: S.ind, steady: S.steady, tf: S.tf, orMin: S.orMin}; S = Object.assign(freshState(), keep); newRound(); edgeKey = null; commit(); resetShows.forEach(f => f()); toast('Reset: $10,000, no trades or calls'); };
       no.onclick = show; no.focus();
     };
     return show;
