@@ -238,7 +238,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .top{flex-wrap:nowrap;align-items:center;gap:12px 24px}
   .brand h1{font-size:26px}
   .brand p,.reset-top{display:none}
-  .stats{flex-wrap:nowrap;gap:10px 20px;flex:1;justify-content:center}
+  .stats{flex-wrap:nowrap;gap:10px 20px;flex:1;justify-content:flex-end}
   .stat .v{font-size:16px}
   .top>.intro2{display:flex;flex:none}
   .ohlc-line{order:5;flex:1 0 100%;overflow-x:auto;scrollbar-width:none}
@@ -259,15 +259,79 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .log td:first-child::before{content:none}
 }
 @media (min-width:641px) and (max-width:860px){
-  #trade-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-  #trade-panel>.hint{grid-column:1/-1}
   .edge-table tbody{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));column-gap:24px}
+}
+/* ---------- tablet v49: header, chart and controls fit one screen ---------- */
+@media (min-width:641px) and (max-width:1024px){
+  body{padding:12px 16px 24px}
+  .wrap{gap:10px}
+  .brand-row{display:flex;align-items:center;gap:14px}
+  .phone-bar{display:flex;align-items:center}
+  #btn-menu{display:none}
+  .brand h1{font-size:24px;white-space:nowrap}
+  .stat .v{white-space:nowrap}
+  .seg.game-seg button{padding:0 14px;min-height:40px;white-space:nowrap}
+  /* 34px = the body's top padding, the gap under the header and a 12px bottom margin. */
+  .main{height:calc(100vh - var(--top-h,60px) - 34px);height:calc(100dvh - var(--top-h,60px) - 34px);min-height:540px}
+  .chart-card{min-height:0}
+  .chart-head{padding:8px 14px;gap:4px 12px}
+  .chart-wrap{flex:1;height:auto;min-height:240px}
+  .panel{gap:12px;padding:12px}
+  .panel .hint,.panel .steady-toggle{display:none}
+  .ind-phone{display:flex}
+  .panel .pos-sub,.pos-risk{font-size:12.5px}
+  #btn-stop{border-color:var(--line);background:var(--surface);color:var(--ink);font:600 14px var(--sans);padding:11px 12px}
+  #btn-new{border:1px dashed var(--line)}
+  #trade-panel>.group:last-of-type .row{grid-template-columns:repeat(6,minmax(0,1fr))}
+  #btn-step{grid-column:span 4}
+  #btn-skip,#btn-play,#speed,#btn-jump{grid-column:span 2}
+}
+/* Tablet portrait: the chart takes what the panel leaves; the controls sit in two columns. */
+@media (min-width:641px) and (max-width:860px){
+  .main{display:flex;flex-direction:column}
+  .chart-card{flex:1}
+  #trade-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+  #trade-panel>.group:nth-child(n+3){display:contents}
+  #trade-panel>.group:nth-child(n+3)>.label{display:none}
+  #pos{grid-column:1;grid-row:1}
+  #trade-panel>.group:nth-child(2){grid-column:1;grid-row:2}
+  #trade-panel .my-tag{grid-column:1;grid-row:3}
+  #btn-stop{grid-column:1;grid-row:4}
+  #trade-panel .trade-row{grid-column:2;grid-row:1/3}
+  #trade-panel>.group:nth-child(4)>.row{grid-column:2;grid-row:3/5}
+  .stats{gap:10px 16px}
+  .stat .label{font-size:0;letter-spacing:0}
+  .stat .label::after{content:attr(data-s);font:500 10px var(--sans);letter-spacing:.08em;text-transform:uppercase}
+  #call-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;align-items:start}
+}
+/* Tablet landscape: the side panel, filled to the chart's height; it scrolls if it ever can't fit. */
+@media (min-width:861px) and (max-width:1024px){
+  .main{grid-template-columns:minmax(0,1fr) 300px;gap:10px;align-items:stretch}
+  .panel{overflow-y:auto;min-height:0}
+  #btn-new{margin-top:auto}
+  #btn-step,#btn-skip,#btn-play,#speed{grid-column:span 3}
+  #btn-jump{grid-column:1/-1}
+  .pr-pct{display:none}
 }
 /* Touch tablets: 44px targets (the primary pointer, so touch laptops used with a mouse stay dense). */
 @media (pointer:coarse) and (min-width:641px){
   .btn,.seg button,select{min-height:44px}
   .tf-seg button,.btn.small{min-height:36px}
   .my-tag select{min-height:44px}
+}
+
+/* ---------- phones and tablets: the position card on two lines, with the risk ---------- */
+@media (max-width:1024px){
+  .panel .pos{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 10px;padding:6px 12px}
+  .panel .pos>.label{display:none}
+  .panel .pos-side{grid-column:1;grid-row:1;font-size:17px}
+  .panel .pos-pnl{grid-column:2;grid-row:1;font-size:17px}
+  .panel .pos-sub{font-size:11.5px;grid-column:1/-1;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  #pos .pos-sub{grid-column:1;grid-row:2}
+  #pos[data-side="flat"] .pos-sub{grid-column:1/-1}
+  .ps-bars,.ps-q{display:none}
+  .ps-qty{display:inline;font:600 15px var(--sans)}
+  .pos-risk{display:block;grid-column:2;grid-row:2;font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
 }
 
 /* ---------- phone: chart on top, controls docked at the bottom, no page scroll while playing ---------- */
@@ -283,7 +347,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .brand p{display:none}
   body.intro-open .brand p{display:block;margin:10px 0 0;font-size:14px;max-width:none}
   body.intro-open .intro-close{display:flex;width:100%;margin-top:10px;min-height:44px}
-  .stats{flex-wrap:nowrap;gap:12px;justify-content:space-between}
+  .stats{flex-wrap:nowrap;gap:8px;justify-content:space-between}
   .stat .label{font-size:10px}
   .stat .v{font-size:14px}
   .seg.game-seg button{padding:0 12px;min-height:40px;font-size:13.5px}
@@ -291,8 +355,8 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   /* While playing the stats are one line with short labels; the stats screen keeps the big ones. */
   body:not(.stats-open) .stat{flex-direction:row;align-items:baseline;gap:4px}
   body:not(.stats-open) .stat .label{font-size:0;letter-spacing:0;text-transform:none}
-  body:not(.stats-open) .stat .label::after{content:attr(data-s);font:12px var(--mono);color:var(--muted)}
-  body:not(.stats-open) .stat .v{font-size:12px}
+  body:not(.stats-open) .stat .label::after{content:attr(data-s);font:11.5px var(--mono);color:var(--muted)}
+  body:not(.stats-open) .stat .v{font-size:11.5px;white-space:nowrap}
   kbd{display:none}
 
   .main{display:flex;flex-direction:column;align-items:stretch;gap:0;flex:1;min-height:0}
@@ -309,16 +373,6 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .panel{border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 6px);gap:8px}
   .panel .hint,.panel .group>.label,.panel #speed,.panel .steady-toggle{display:none}
   .panel .btn{min-height:46px;padding:0 8px}
-  .panel .pos{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 10px;padding:6px 12px}
-  .panel .pos>.label{display:none}
-  .panel .pos-side{font-size:17px}
-  .panel .pos-side{grid-column:1;grid-row:1}
-  .panel .pos-pnl{grid-column:2;grid-row:1;font-size:17px}
-  .panel .pos-sub{font-size:11.5px;grid-column:1;grid-row:2;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-  .ps-bars,.ps-q{display:none}
-  .ps-qty{display:inline;font:600 15px var(--sans)}
-  .pos-risk{display:block;grid-column:2;grid-row:2;font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
-  .panel .pos[data-side="flat"] .pos-sub{grid-column:1/-1}
   .row>.more-btn{display:flex;padding:0;font-size:20px;letter-spacing:1px}
   /* Review: no trade dock; the legend is one row of chips that scrolls sideways. */
   body.reviewing .panel{display:none}
@@ -614,7 +668,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v48';
+const KEY = 'blindtape.v2', APP_V = 'v49';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -1081,7 +1135,7 @@ function render() {
   const banked = p && p.banked || 0, scaled = p && ((p.adds && p.adds.length) || (p.trims && p.trims.length));
   $('#pos-sub').innerHTML = p ? `<span class="ps-q">${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)}<span class="ps-bars"> · ${r.idx - p.entryIdx} bars</span> · </span>${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
   const riskTxt = p && p.risk > 0 ? 'risk ' + fmt$(p.risk) + ' · ' + +(p.risk / equity() * 100).toFixed(2) + '%' : '';
-  $('#pos-risk').textContent = riskTxt;
+  $('#pos-risk').innerHTML = p && p.risk > 0 ? 'risk ' + fmt$(p.risk) + '<span class="pr-pct"> · ' + +(p.risk / equity() * 100).toFixed(2) + '%</span>' : '';
   $('#more-stop').textContent = !p ? 'A stop is set on entry' : (p.stop != null ? 'Stop ' + fmtP(p.stop) : 'No stop') + (riskTxt ? ' · ' + riskTxt : '');
   if (r.done) $('#more-sheet').hidden = true;
   const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
@@ -1881,9 +1935,11 @@ function axisTag(ctx, p, yy, bg, fg, ax, axisW, outline) {
 function bind() {
   if (bound) return; bound = true;
   // Phone layout: the Trade / Call it switch sits in the top bar; stats and the intro are separate views.
-  const phone = matchMedia('(max-width: 640px)'), seg = $('#game-seg'), segHome = seg.parentElement, segNext = seg.nextElementSibling;
-  const placeSeg = () => phone.matches ? $('#seg-slot').appendChild(seg) : segHome.insertBefore(seg, segNext);
-  phone.addEventListener('change', placeSeg); placeSeg();
+  const phone = matchMedia('(max-width: 640px)'), compact = matchMedia('(max-width: 1024px)'), seg = $('#game-seg'), segHome = seg.parentElement, segNext = seg.nextElementSibling;
+  const placeSeg = () => compact.matches ? $('#seg-slot').appendChild(seg) : segHome.insertBefore(seg, segNext);
+  compact.addEventListener('change', placeSeg); addEventListener('resize', placeSeg); placeSeg();
+  const top = $('.top');
+  new ResizeObserver(() => document.documentElement.style.setProperty('--top-h', top.offsetHeight + 'px')).observe(top);
   const sheet = $('#more-sheet'), more = $('#btn-more');
   const extras = [[$('#size-seg').parentElement, '#more-risk-slot'], [$('#btn-stop'), '#more-stop-slot'], [$('.my-tag'), '#more-tag-slot'], [$('#btn-skip'), '#more-btns'], [$('#btn-new'), '#more-btns']]
     .map(([el, slot]) => ({ el, slot: $(slot), home: el.parentElement, next: el.nextSibling }));
