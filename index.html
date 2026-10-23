@@ -309,8 +309,9 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 /* Tablet landscape: the side panel, filled to the chart's height; it scrolls if it ever can't fit. */
 @media (min-width:861px) and (max-width:1024px){
   .main{grid-template-columns:minmax(0,1fr) 300px;gap:10px;align-items:stretch}
-  .panel{overflow-y:auto;min-height:0}
+  .panel{overflow-y:auto;min-height:0;scrollbar-width:thin}
   #btn-new{margin-top:auto}
+  #trade-panel>.group:last-of-type .btn{padding-left:8px;padding-right:8px;white-space:nowrap}
   #btn-step,#btn-skip,#btn-play,#speed{grid-column:span 3}
   #btn-jump{grid-column:1/-1}
   .pr-pct{display:none}
@@ -671,7 +672,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v50';
+const KEY = 'blindtape.v2', APP_V = 'v51';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
