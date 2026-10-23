@@ -672,7 +672,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v51';
+const KEY = 'blindtape.v2', APP_V = 'v52';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -800,6 +800,8 @@ function setGame(g) {
 // Record a call (dir 1 up, -1 down) or a pass (0), then reveal the next CALL_N bars.
 function makeCall(dir) {
   const r = R(); if (!r || r.done || gameOf(r) !== 'call' || animating) return;
+  // Before the open, Pass moves to the 09:30 bar so the first call is made there.
+  if (preOpen(r)) { if (dir) toast(OPEN_MSG); else { r.lastCall = null; step(1); } return; }
   const from = r.idx, to = Math.min(from + CALL_N, r.end), move = r.bars[to].c / r.bars[from].c - 1;
   if (dir) {
     S.calls.unshift({round: S.roundNo, mode: modeOf(r), tf: r.tf || '5m', ticker: r.ticker, side: dir, entryIdx: from, exitIdx: to, entry: r.bars[from].c, exit: r.bars[to].c, pnl: 0, hit: dir * move > 0, tag: autoTag(r, dir, from), auto: true, rules: 2});
@@ -943,6 +945,8 @@ const R = () => S.round;
 const is1 = r => !!(r && r.tf === '1m');
 const bars5 = r => r.b5 || r.bars;
 const H5 = r => r.hist5 || H(r);
+const preOpen = r => !!(r && !r.done && modeOf(r) === 'm5' && H5(r) === DAY5 && r.idx === H(r) - 1);
+const OPEN_MSG = 'Opens at 09:30 · press Next bar to see the open';
 const END5 = r => r.b5 ? 2 * DAY5 - 1 : r.end;
 const to5 = (r, i) => is1(r) ? Math.floor((i + 1) / 5) - 1 : i;   // last complete 5-min bar at view bar i
 const from5 = (r, i5) => is1(r) ? i5 * 5 + 4 : i5;                 // view bar where 5-min bar i5 closes
@@ -1007,6 +1011,7 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.opacit
 
 function openPos(side) {
   const r = R(); if (!r || r.done) return;
+  if (preOpen(r)) { toast(OPEN_MSG); return; }
   if (r.pos && r.pos.side === side) return addPos();
   if (r.pos) closePos(true);
   const st = defaultStop(r, side), px = price(), qty = riskQty(px, st, BP * equity() / px);
@@ -1145,7 +1150,9 @@ function render() {
   const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
 
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
-  $('#btn-long').disabled = r.done; $('#btn-short').disabled = r.done;
+  const pre = preOpen(r);
+  $('#btn-long').disabled = $('#btn-short').disabled = r.done || pre;
+  $('#btn-long').title = $('#btn-short').title = pre ? OPEN_MSG : '';
   $('#btn-close').disabled = r.done || !p; $('#btn-trim').disabled = r.done || !p;
   // Your setup: tags the open trade, or the next one when you're flat.
   const mt = $('#my-tag'), mv = (p ? p.myTag : S.nextTag) || ''; if (mt.value !== mv) mt.value = mv; mt.disabled = !!r.done;
@@ -1177,7 +1184,10 @@ function render() {
     $('#call-sub').textContent = !lc ? `Where will price be ${callSpan} from now?` : `${lc.dir ? 'You called ' + (lc.dir > 0 ? 'up' : 'down') : 'You passed'} · next ${callSpan} ${fmtPct(lc.move)}`;
     $('#call-score').textContent = (rc.length ? `${rh} of ${rc.length} right on this chart` : 'No calls on this chart yet') + (r.done ? '' : ` · ${callsLeft} call${callsLeft === 1 ? '' : 's'} left`);
     $('#call-label').textContent = 'Call the next 5 ' + (m5 ? 'bars (' + CALL_N * BM + ' min)' : 'days');
-    $('#btn-up').disabled = $('#btn-down').disabled = $('#btn-pass').disabled = r.done || animating;
+    $('#btn-up').disabled = $('#btn-down').disabled = r.done || animating || pre;
+    $('#btn-pass').disabled = r.done || animating;
+    $('#btn-pass').innerHTML = (pre ? 'To 09:30' : 'Pass') + ' <kbd>→</kbd>';
+    if (pre) $('#call-sub').textContent = 'Calls start at the 09:30 open. Pass to see it.';
   }
   $('#review-ctl').hidden = !(r.done && r.review);
   document.body.classList.toggle('reviewing', !!(r.done && r.review));
@@ -1223,7 +1233,9 @@ function renderOhlc() {
   let s = 0, n = 0; for (let k = Math.max(0, i - 20); k < i; k++) { s += r.bars[k].v; n++; }
   const rv = n ? b.v / (s / n) : 1;
   const g = (l, v) => `<span><i>${l}</i><b>${v}</b></span>`;
-  $('#ohlc').innerHTML = (modeOf(r) === 'm5' ? `<span><b>${clock(i)}</b></span>` : '') + g('O', fmtP(b.o)) + g('H', fmtP(b.h)) + g('L', fmtP(b.l)) + g('C', fmtP(b.c))
+  // Bars of the previous session say so, since the clock alone would read like late today.
+  const t = i < DAY ? (i === DAY - 1 ? 'prev close ' : 'prev ') : '';
+  $('#ohlc').innerHTML = (modeOf(r) === 'm5' ? `<span>${t ? '<i>' + t.trim() + '</i>' : ''}<b>${clock(i)}</b></span>` : '') + g('O', fmtP(b.o)) + g('H', fmtP(b.h)) + g('L', fmtP(b.l)) + g('C', fmtP(b.c))
     + `<span class="${cls(ch)}">${fmtPct(ch)}</span><span><i>Vol</i><b>${rv.toFixed(1)}×</b><span class="oa"> avg</span></span>`;
 }
 
