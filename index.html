@@ -65,6 +65,8 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .ohlc-line{display:flex;align-items:baseline;gap:4px 8px;flex:1 1 0;min-width:0;overflow:hidden}
 .ohlc{display:flex;flex-wrap:nowrap;gap:4px 12px;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;min-width:0}
 .ohlc b{color:var(--ink);font-weight:500}
+.ohlc>span{white-space:nowrap}
+.ohlc i{font-style:normal;margin-right:4px}
 .spacer{flex:1}
 .tf-seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .tf-seg button{border:0;background:transparent;color:var(--ink);font:600 11.5px var(--mono);padding:3px 9px;min-height:26px;cursor:pointer}
@@ -363,9 +365,10 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .chart-card{flex:1;min-height:0;border-radius:0;border-left:0;border-right:0;box-shadow:none}
   .chart-head{padding:6px 16px;gap:4px 12px}
   .ticker{font-size:16px}
-  .ohlc-line{order:5;flex:1 0 100%;overflow-x:auto;scrollbar-width:none}
-  .ohlc-line::-webkit-scrollbar{display:none}
-  .ohlc{font-size:11.5px;overflow:visible}
+  .ohlc-line{order:5;flex:1 0 100%;flex-wrap:wrap;gap:0 6px;overflow:visible}
+  .ohlc{font-size:11.5px;overflow:visible;flex-wrap:wrap;gap:0 7px}
+  .ohlc i{margin-right:2px}
+  .oa{display:none}
   .chart-wrap{flex:1;height:auto;min-height:160px}
   .chart-wrap #chart{touch-action:none}
   .progress{border-radius:0}
@@ -668,7 +671,7 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v49';
+const KEY = 'blindtape.v2', APP_V = 'v50';
 const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
@@ -1218,7 +1221,9 @@ function renderOhlc() {
   // Volume shown relative to its 20-bar average, since raw share counts would identify the stock.
   let s = 0, n = 0; for (let k = Math.max(0, i - 20); k < i; k++) { s += r.bars[k].v; n++; }
   const rv = n ? b.v / (s / n) : 1;
-  $('#ohlc').innerHTML = (modeOf(r) === 'm5' ? `<b>${clock(i)}</b> ` : '') + `O <b>${fmtP(b.o)}</b> H <b>${fmtP(b.h)}</b> L <b>${fmtP(b.l)}</b> C <b>${fmtP(b.c)}</b> <span class="${cls(ch)}">${fmtPct(ch)}</span> Vol <b>${rv.toFixed(1)}× avg</b>`;
+  const g = (l, v) => `<span><i>${l}</i><b>${v}</b></span>`;
+  $('#ohlc').innerHTML = (modeOf(r) === 'm5' ? `<span><b>${clock(i)}</b></span>` : '') + g('O', fmtP(b.o)) + g('H', fmtP(b.h)) + g('L', fmtP(b.l)) + g('C', fmtP(b.c))
+    + `<span class="${cls(ch)}">${fmtPct(ch)}</span><span><i>Vol</i><b>${rv.toFixed(1)}×</b><span class="oa"> avg</span></span>`;
 }
 
 const LOG_HEAD = {
