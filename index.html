@@ -91,6 +91,21 @@ body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);padding:0 1
 .edge-by{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted)}
 .tf-note{font:500 11px var(--mono);color:var(--muted);white-space:nowrap;flex:none}
 .top>.intro2{display:none}
+.row>.more-btn,.ps-qty,.pos-risk{display:none}
+.sheet{position:fixed;inset:0;z-index:25;display:flex;flex-direction:column;justify-content:flex-end}
+.sheet-back{position:absolute;inset:0;background:color-mix(in srgb,var(--ink) 35%,transparent)}
+.sheet-box{position:relative;background:var(--surface);border-radius:18px 18px 0 0;border-top:1px solid var(--line);box-shadow:var(--shadow);padding:8px 16px calc(env(safe-area-inset-bottom,0px) + 16px);display:flex;flex-direction:column;gap:14px;max-height:88vh;max-height:88dvh;overflow:auto}
+.sheet-box:focus{outline:none}
+.sheet-grab{align-self:center;width:36px;height:4px;border-radius:2px;background:var(--line)}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sheet-head h2{font-family:var(--display);font-weight:800;font-size:20px;margin:0}
+.sheet .my-tag{flex-direction:column;align-items:stretch;gap:6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:500}
+.sheet .my-tag select{min-height:44px;font:15px var(--sans);letter-spacing:0;text-transform:none}
+.sheet .seg button{min-height:44px}
+.sheet .btn{min-height:46px}
+.more-stop{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:8px}
+.more-stop>.num{flex:1;font-size:13px}
+.more-stop .btn{border-color:var(--line);color:var(--ink);font-size:14px;padding:0 12px;min-height:40px}
 /* Wide screens: the OHLC line grows into the free room on the head's one row, so the spacer goes.
    Up to 1024 that line gets its own row instead, so the close never gets cut. */
 @media (min-width:1025px){.chart-head>.spacer{display:none}.chart-head{gap:8px 14px}}
@@ -261,7 +276,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   body:not(.stats-open){overflow:hidden}
   .wrap{gap:0;max-width:none}
   body:not(.stats-open) .wrap{height:100vh;height:100dvh}
-  .top{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px;padding:calc(env(safe-area-inset-top,0px) + 10px) 16px 8px}
+  .top{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:4px;padding:calc(env(safe-area-inset-top,0px) + 6px) 16px 6px}
   .brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .brand h1{font-size:22px}
   .phone-bar{display:flex;align-items:center;gap:8px}
@@ -272,7 +287,12 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .stat .label{font-size:10px}
   .stat .v{font-size:14px}
   .seg.game-seg button{padding:0 12px;min-height:40px;font-size:13.5px}
-  .btn.icon{width:44px;height:44px;padding:0;flex:none}
+  .btn.icon{width:40px;height:40px;padding:0;flex:none}
+  /* While playing the stats are one line with short labels; the stats screen keeps the big ones. */
+  body:not(.stats-open) .stat{flex-direction:row;align-items:baseline;gap:4px}
+  body:not(.stats-open) .stat .label{font-size:0;letter-spacing:0;text-transform:none}
+  body:not(.stats-open) .stat .label::after{content:attr(data-s);font:12px var(--mono);color:var(--muted)}
+  body:not(.stats-open) .stat .v{font-size:12px}
   kbd{display:none}
 
   .main{display:flex;flex-direction:column;align-items:stretch;gap:0;flex:1;min-height:0}
@@ -288,34 +308,35 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 
   .panel{border-radius:16px 16px 0 0;border-left:0;border-right:0;border-bottom:0;padding:10px 16px calc(env(safe-area-inset-bottom,0px) + 6px);gap:8px}
   .panel .hint,.panel .group>.label,.panel #speed,.panel .steady-toggle{display:none}
-  .panel .btn{min-height:48px;padding:0 8px}
+  .panel .btn{min-height:46px;padding:0 8px}
   .panel .pos{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0 10px;padding:6px 12px}
   .panel .pos>.label{display:none}
   .panel .pos-side{font-size:17px}
   .panel .pos-side{grid-column:1;grid-row:1}
   .panel .pos-pnl{grid-column:2;grid-row:1;font-size:17px}
-  .panel .pos-sub{font-size:11.5px;grid-column:1/-1;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-  .ps-bars{display:none}
+  .panel .pos-sub{font-size:11.5px;grid-column:1;grid-row:2;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+  .ps-bars,.ps-q{display:none}
+  .ps-qty{display:inline;font:600 15px var(--sans)}
+  .pos-risk{display:block;grid-column:2;grid-row:2;font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
+  .panel .pos[data-side="flat"] .pos-sub{grid-column:1/-1}
+  .row>.more-btn{display:flex;padding:0;font-size:20px;letter-spacing:1px}
   /* Review: no trade dock; the legend is one row of chips that scrolls sideways. */
   body.reviewing .panel{display:none}
   body.reviewing .review-ctl{flex:1 0 100%}
   body.reviewing .legend{flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none;gap:6px;padding:6px 16px}
   body.reviewing .legend::-webkit-scrollbar{display:none}
   body.reviewing .legend span{flex:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--surface)}
-  #trade-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
-  #trade-panel>.group{grid-column:1/-1}
-  #trade-panel>.pos+.group{grid-column:auto;justify-content:center}
+  #trade-panel{display:flex;flex-direction:column;gap:8px}
   .panel .seg{grid-template-columns:repeat(3,auto)}
   .panel .seg button{min-height:40px;padding:0 10px}
   .panel .row{grid-template-columns:repeat(3,minmax(0,1fr))}
   .panel .btn.wide{grid-column:auto}
   #btn-close{font-size:13px;line-height:1.15;white-space:normal}
-  #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr 1fr}
+  #trade-panel>.group:last-of-type .row{grid-template-columns:2fr 1fr 1fr 46px}
   #call-panel .row{grid-template-columns:repeat(4,minmax(0,1fr))}
   .btn-jump{font-size:13px;line-height:1.15;white-space:normal}
   .panel .row.trade-row{grid-template-columns:repeat(4,minmax(0,1fr))}
   .btn.call{min-height:56px;padding:0;font-size:16px}
-  .panel #btn-new{min-height:36px;padding:2px}
 
   /* Chart complete: a bottom sheet, setups folded into one line. */
   .overlay{position:fixed;z-index:20;align-items:end;justify-items:stretch;padding:0;background:color-mix(in srgb,var(--bg) 50%,transparent)}
@@ -461,6 +482,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
         <span class="pos-side" id="pos-side">Flat</span>
         <span class="pos-sub num" id="pos-sub">No open trade</span>
         <span class="pos-pnl" id="pos-pnl">$0.00</span>
+        <span class="pos-risk num" id="pos-risk"></span>
       </div>
 
       <div class="group">
@@ -496,6 +518,7 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
             <option value="120">Fast</option>
           </select>
           <button class="btn wide btn-jump" id="btn-jump" type="button">Skip to move <kbd>J</kbd></button>
+          <button class="btn more-btn" id="btn-more" type="button" aria-label="More: risk, your setup, stop, +5 bars, new chart" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-sheet">⋯</button>
         </div>
         <label class="toggle steady-toggle"><input type="checkbox" id="steady"> Steady pace: every bar takes the same time in Play</label>
       </div>
@@ -522,6 +545,18 @@ button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
       </div>
       <button class="btn ghost" id="btn-new" type="button">Skip to a new chart</button>
     </aside>
+  </div>
+
+  <div class="sheet" id="more-sheet" hidden>
+    <div class="sheet-back" id="more-back"></div>
+    <div class="sheet-box" id="more-box" role="dialog" aria-modal="true" aria-labelledby="more-title" tabindex="-1">
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <div class="sheet-head"><h2 id="more-title">Trade settings</h2><button class="btn icon ghost" id="more-close" type="button" aria-label="Close">✕</button></div>
+      <div id="more-risk-slot"></div>
+      <div id="more-tag-slot"></div>
+      <div class="more-stop"><span class="num" id="more-stop">No stop</span><span id="more-stop-slot"></span></div>
+      <div class="row" id="more-btns"></div>
+    </div>
   </div>
 
   <section class="card log" aria-label="Your edge by setup">
@@ -579,7 +614,8 @@ const fwdLabel = r => modeOf(r) === 'm5' ? '25 min' : '5 days';
 const barWord = r => modeOf(r) === 'm5' ? 'bar' : 'day';
 // Clock time (ET) at the open of bar i of the current view, or at its close with close=true.
 const clock = (i, close) => { const m = 570 + (i % DAY) * BM + (close ? BM : 0), h = Math.floor(m / 60), mm = m % 60; return String(h).padStart(2, '0') + ':' + String(mm).padStart(2, '0'); };
-const KEY = 'blindtape.v2', APP_V = 'v47';
+const KEY = 'blindtape.v2', APP_V = 'v48';
+const STAT_SHORT = { 'Total P&L': 'P&L', 'Win rate': 'Win', 'Hit rate': 'Hit', 'Beat random': 'Beat rnd' };
 const TAGS = [
   {id: 'breakout', label: 'Breakout'}, {id: 'pullback', label: 'Pullback'}, {id: 'trend', label: 'Trend continuation'},
   {id: 'reversal', label: 'Reversal'}, {id: 'range', label: 'Range fade'},
@@ -1032,16 +1068,22 @@ function render() {
   $('#ticker').textContent = r.done ? r.ticker : '???';
   $('#btn-new').disabled = !DATA; $('#btn-next-chart').disabled = !DATA;
   const m5 = modeOf(r) === 'm5';
+  // Short stat labels for the phone's one-line strip.
+  ['#st-l1', '#st-l2', '#st-l3', '#st-l4'].forEach(id => { const e = $(id); e.dataset.s = STAT_SHORT[e.textContent] || e.textContent; });
   $('#round-tag').textContent = 'Chart ' + S.roundNo;
   const played = r.idx - (H(r) - 1);
   $('#prog').style.width = (played / FW(r) * 100) + '%';
 
   const pos = $('#pos'), p = r.pos, u = unreal();
   pos.dataset.side = p ? (p.side > 0 ? 'long' : 'short') : 'flat';
-  $('#pos-side').textContent = p ? (p.side > 0 ? 'Long' : 'Short') : 'Flat';
+  $('#pos-side').innerHTML = p ? (p.side > 0 ? 'Long' : 'Short') + `<span class="ps-qty"> ${p.qty} @ ${fmtP(p.entry)}</span>` : 'Flat';
   $('#pos-side').className = 'pos-side ' + (p ? (p.side > 0 ? 'up' : 'down') : '');
   const banked = p && p.banked || 0, scaled = p && ((p.adds && p.adds.length) || (p.trims && p.trims.length));
-  $('#pos-sub').innerHTML = p ? `${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)}<span class="ps-bars"> · ${r.idx - p.entryIdx} bars</span> · ${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  $('#pos-sub').innerHTML = p ? `<span class="ps-q">${p.qty} sh @ ${scaled ? 'avg ' : ''}${fmtP(p.entry)}<span class="ps-bars"> · ${r.idx - p.entryIdx} bars</span> · </span>${fmtPct(p.side * (price() / p.entry - 1))}${banked ? ' · ' + fmt$(banked, true) + ' banked' : ''} · stop ${p.stop != null ? fmtP(p.stop) : 'off'}` : `${m5 ? clock(r.idx, true) + ' ET · ' : ''}Bar ${played} of ${FW(r)} · last ${fmtP(price())}`;
+  const riskTxt = p && p.risk > 0 ? 'risk ' + fmt$(p.risk) + ' · ' + +(p.risk / equity() * 100).toFixed(2) + '%' : '';
+  $('#pos-risk').textContent = riskTxt;
+  $('#more-stop').textContent = !p ? 'A stop is set on entry' : (p.stop != null ? 'Stop ' + fmtP(p.stop) : 'No stop') + (riskTxt ? ' · ' + riskTxt : '');
+  if (r.done) $('#more-sheet').hidden = true;
   const pp = $('#pos-pnl'), tradePnl = r2(u + banked); pp.textContent = fmt$(tradePnl, true); pp.className = 'pos-pnl ' + cls(tradePnl);
 
   document.querySelectorAll('#size-seg button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === S.sizeIdx)));
@@ -1842,6 +1884,23 @@ function bind() {
   const phone = matchMedia('(max-width: 640px)'), seg = $('#game-seg'), segHome = seg.parentElement, segNext = seg.nextElementSibling;
   const placeSeg = () => phone.matches ? $('#seg-slot').appendChild(seg) : segHome.insertBefore(seg, segNext);
   phone.addEventListener('change', placeSeg); placeSeg();
+  const sheet = $('#more-sheet'), more = $('#btn-more');
+  const extras = [[$('#size-seg').parentElement, '#more-risk-slot'], [$('#btn-stop'), '#more-stop-slot'], [$('.my-tag'), '#more-tag-slot'], [$('#btn-skip'), '#more-btns'], [$('#btn-new'), '#more-btns']]
+    .map(([el, slot]) => ({ el, slot: $(slot), home: el.parentElement, next: el.nextSibling }));
+  const closeMore = () => { if (sheet.hidden) return; sheet.hidden = true; more.setAttribute('aria-expanded', 'false'); if (phone.matches) more.focus(); };
+  let onPhone = null;
+  const placeExtras = () => {
+    if (phone.matches === onPhone) return; onPhone = phone.matches;
+    placeSeg();
+    if (onPhone) extras.forEach(x => x.slot.appendChild(x.el));
+    else { closeMore(); extras.slice().reverse().forEach(x => x.home.insertBefore(x.el, x.next)); }
+  };
+  // Resize too, in case a browser doesn't fire the media query's change event.
+  phone.addEventListener('change', placeExtras); addEventListener('resize', placeExtras); placeExtras();
+  more.onclick = () => { sheet.hidden = false; more.setAttribute('aria-expanded', 'true'); $('#more-box').focus(); };
+  $('#more-close').onclick = closeMore; $('#more-back').onclick = closeMore;
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !sheet.hidden) closeMore(); });
+  ['#btn-skip', '#btn-new', '#btn-stop'].forEach(id => $(id).addEventListener('click', closeMore));
   const body = document.body;
   $('#btn-menu').onclick = () => { stopPlay(); body.classList.add('stats-open'); window.scrollTo(0, 0); };
   $('#btn-stats-back').onclick = () => { body.classList.remove('stats-open'); draw(); };
